@@ -90,7 +90,7 @@ for f in range(numData):
     x = frame.x()
     y = frame.y()
     a = frame.angle()
-    print("   (%d, Frame2D.fromXYA(%f,%f,%f), Frame2D.fromXYA(%f,%f,%f))" % (ts,xhat,yhat,ahat,x,y,a), end="", file=logFile)
+    print("   (%d, Frame2D.fromXYA(%f,%f,%f), Frame2D.fromXYA(%f,%f,%f))\n" % (ts,xhat,yhat,ahat,x,y,a), end="", file=logFile)
     t += 1
 
 print("]", file=logFile)
