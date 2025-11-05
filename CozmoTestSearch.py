@@ -4,15 +4,14 @@ from cozmo.util import distance_mm, speed_mmps, degrees
 def test_search(robot: cozmo.robot.Robot):
     found_cube = False
     search_steps = 8 #Amount of search cycle repetitions
-    
     robot.start_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
     try:
         for _ in range(search_steps):
             cubes = list(robot.world.visible_light_cubes.values())
             if cubes:
                 cube = cubes[0]
-                print("Cube found: {}".format(cube))
-                robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
+                print("Cube found:", cube)
+                robot.go_to_object(cube, distance_mm(50)).wait_for_completed()
                 print("Arrived at the cube!")
                 found_cube = True
                 break
@@ -22,8 +21,7 @@ def test_search(robot: cozmo.robot.Robot):
         if not found_cube:
             print("Cube was not found.")
     except Exception as e:
-        print("Error: {}".format(e))
+        print("Error:", e)
     finally:
         robot.stop_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
-
 cozmo.run_program(test_search)
