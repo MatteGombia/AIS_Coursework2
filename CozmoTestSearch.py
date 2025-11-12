@@ -1,5 +1,4 @@
 import cozmo
-<<<<<<< HEAD
 from cozmo.util import distance_mm, speed_mmps, degrees, Angle
 import time
 from frame2d import Frame2D 
@@ -53,27 +52,6 @@ def test_search(robot: cozmo.robot.Robot):
             #Turn left 90 degrees to scan new area
             robot.turn_in_place(degrees(20)).wait_for_completed()
             time.sleep(0.2)
-=======
-from cozmo.util import distance_mm, speed_mmps, degrees
-
-def test_search(robot: cozmo.robot.Robot):
-    found_cube = False
-    search_steps = 8 #Amount of search cycle repetitions
-    robot.start_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
-    try:
-        for _ in range(search_steps):
-            cubes = list(robot.world.visible_light_cubes.values())
-            if cubes:
-                cube = cubes[0]
-                print("Cube found:", cube)
-                robot.go_to_object(cube, distance_mm(50)).wait_for_completed()
-                print("Arrived at the cube!")
-                found_cube = True
-                break
-            else:
-                robot.drive_straight(distance_mm(100), speed_mmps(50)).wait_for_completed()
-                robot.turn_in_place(degrees(90)).wait_for_completed()
->>>>>>> 51f6e5eaa8ee002cd5f3b0f5dc1641aa4fbf89e3
         if not found_cube:
             print("Cube was not found.")
     except Exception as e:
