@@ -123,14 +123,33 @@ def Exploration(robot: cozmo.robot.Robot):
         for position in possible_map_positions:
             print("Possible position to explore: " + str(position))
             if position not in map.keys():
-                target_velocity = target_pose_to_velocity_linear(robotPose, position, max_speed_mmps=100)
-                left_speed, right_speed = velocity_to_track_speed(target_velocity, wheelDistance)
+                # build target as a Frame2D in world coords, then express relative to robot frame
+                target_world = Frame2D.fromXYA(position[0], position[1], 0)
+                relative_target = robotPose.inverse().mult(target_world)
+
+                # controller returns (forward_mm_s, angular_rad_s)
+                forward, angular = target_pose_to_velocity_linear(relative_target)
+
+                # compute left/right wheel speeds
+                left_speed, right_speed = velocity_to_track_speed(forward, angular)
                 robot.drive_wheels(left_speed, right_speed)
-                #Estimate time to reach target
+
+                # Estimate time to reach target (conservative). If forward speed is zero (rotating), wait a short time.
                 distance_to_target = math.hypot(position[0] - robotPose.x(), position[1] - robotPose.y())
-                estimated_time = distance_to_target / target_velocity
+                forward_speed = abs(forward)
+                if forward_speed > 1e-3:
+                    estimated_time = distance_to_target / forward_speed
+                else:
+                    # rotating in place; estimate by angular distance to face target
+                    ang = math.atan2(position[1] - robotPose.y(), position[0] - robotPose.x()) - robotPose.angle()
+                    ang = (ang + math.pi) % (2*math.pi) - math.pi
+                    estimated_time = abs(ang) / (abs(angular) if abs(angular) > 1e-3 else 0.5)
+
+                # clamp a maximum wait to avoid long sleeps
+                estimated_time = min(estimated_time, 5.0)
                 time.sleep(estimated_time)
                 robot.stop_all_motors()
+                # refresh pose after motion
                 robotPose = Frame2D.fromPose(robot.pose)
                 break
     
