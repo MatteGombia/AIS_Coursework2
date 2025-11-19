@@ -1,0 +1,26 @@
+import cozmo
+import time
+from math import sqrt
+from cozmo.util import degrees
+
+def cozmo_program(robot: cozmo.robot.Robot):
+    while True:
+        start_accel = robot.accelerometer
+        robot.drive_wheels(50, 50)
+        time.sleep(1)
+        end_accel = robot.accelerometer
+        mag_start = sqrt(start_accel.x**2 + start_accel.y**2 + start_accel.z**2)
+        mag_end = sqrt(end_accel.x**2 + end_accel.y**2 + end_accel.z**2)
+        accel_change = abs(mag_end - mag_start)
+        if accel_change < 100:
+            print("Didn't move (by accelerometer)")
+            print("Δa:", accel_change)
+            robot.drive_wheels(0, 0)
+            robot.drive_wheels(-50, -50, duration=1.0)
+            robot.turn_in_place(degrees(90)).wait_for_completed()
+            time.sleep(0.1)
+        else:
+            print("Moved (by accelerometer)")
+            print("Δa:", accel_change)
+            pass
+cozmo.run_program(cozmo_program)
