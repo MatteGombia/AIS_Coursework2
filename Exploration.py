@@ -19,6 +19,67 @@ cubes = {cozmo.objects.LightCube1Id: [False, None],
 obstacles = []
 map = dict()
 
+# --- path / obstacle helper utilities ---------------------------------
+def _frame2d_to_xy(f: Frame2D):
+    """Return (x,y) in millimetres for a Frame2D-like object.
+    Handles Frame2D instances and objects with a .mat attribute.
+    """
+    try:
+        # Frame2D provides x() and y()
+        return float(f.x()), float(f.y())
+    except Exception:
+        # try matrix-backed
+        try:
+            return float(f.mat[0,2]), float(f.mat[1,2])
+        except Exception:
+            raise ValueError("Can't convert to x,y: %s" % str(f))
+
+
+def _distance_point_to_segment(px, py, x1, y1, x2, y2):
+    """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
+    All units are assumed to be mm.
+    """
+    vx = x2 - x1
+    vy = y2 - y1
+    wx = px - x1
+    wy = py - y1
+    seg_len_sq = vx*vx + vy*vy
+    if seg_len_sq == 0:
+        return math.hypot(px - x1, py - y1)
+    t = (wx*vx + wy*vy) / seg_len_sq
+    if t <= 0:
+        cx, cy = x1, y1
+    elif t >= 1:
+        cx, cy = x2, y2
+    else:
+        cx = x1 + t * vx
+        cy = y1 + t * vy
+    return math.hypot(px - cx, py - cy)
+
+
+def is_path_blocked(start_f: Frame2D, end_f: Frame2D, obstacles_list, clearance_mm=50.0):
+    """Check whether any obstacle in obstacles_list lies within clearance_mm
+    (plus obstacle radius if available) of the straight-line segment from
+    start_f to end_f. Returns (blocked: bool, obstacle, distance_mm).
+    """
+    sx, sy = _frame2d_to_xy(start_f)
+    ex, ey = _frame2d_to_xy(end_f)
+    for obs in obstacles_list:
+        # some observed objects may not yet have a pose
+        if not hasattr(obs, 'pose') or obs.pose is None:
+            continue
+        try:
+            of = Frame2D.fromPose(obs.pose)
+            ox, oy = _frame2d_to_xy(of)
+        except Exception:
+            continue
+        dist = _distance_point_to_segment(ox, oy, sx, sy, ex, ey)
+        
+        if dist <= (clearance_mm):
+            return True
+    return False
+
+
 def handle_object_observed(evt, **kw):
     global obstacles
     # This will be called whenever an EvtObjectDisappeared is dispatched -
@@ -42,7 +103,8 @@ def Exploration(robot: cozmo.robot.Robot):
         robotPose + Frame2D.fromTranslation(0, distance_mm(100)),
         robotPose + Frame2D.fromTranslation(0, -distance_mm(100)),
     ]
-    
+    print("Robot Pose: " + str(robotPose))
+    print("Map: " + str(map))
 
     try:
         for _ in range(search_steps):
@@ -62,10 +124,31 @@ def Exploration(robot: cozmo.robot.Robot):
             robot.turn_in_place(degrees(20)).wait_for_completed()
             time.sleep(0.1)
 
-        
+        #Remove blocked positions from possible map positions
+        for position in possible_map_positions:
+            blocked = is_path_blocked(robotPose, position, obstacles, clearance_mm=80.0)
+            if blocked:
+                print("Path to position %s is blocked by an obstacle." % str(position))
+                possible_map_positions.remove(position)
+
+        #Update map with positions
         map[(robotPose.x_mm, robotPose.y_mm)] = possible_map_positions
 
-        robot.drive_straight(distance_mm(100), speed_mmps(50)).wait_for_completed()
+        #go to next unseen position
+        for position in possible_map_positions:
+            print("Possible position to explore: " + str(position))
+            if position not in map.keys():
+                target_velocity = target_pose_to_velocity_linear(robotPose, position, max_speed_mmps=100)
+                left_speed, right_speed = velocity_to_track_speed(target_velocity, wheelDistance)
+                robot.drive_wheels(left_speed, right_speed)
+                #Estimate time to reach target
+                distance_to_target = math.hypot(position.x_mm - robotPose.x_mm, position.y_mm - robotPose.y_mm)
+                estimated_time = distance_to_target / target_velocity
+                time.sleep(estimated_time)
+                robot.stop_all_motors()
+                robotPose = Frame2D.fromPose(robot.pose)
+                break
+    
         time.sleep(0.2)
         if not found_cube:
             print("Cube was not found.")
