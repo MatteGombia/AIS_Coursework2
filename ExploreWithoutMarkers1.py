@@ -1,5 +1,6 @@
 import cozmo
 import time
+from math import sqrt
 from cozmo.util import degrees
 
 def cozmo_program(robot: cozmo.robot.Robot):
@@ -10,7 +11,10 @@ def cozmo_program(robot: cozmo.robot.Robot):
     robot.drive_wheels(0, 0)
     
     end_pose = robot.pose
-    distance_moved = start_pose.position.distance_to(end_pose.position)
+    
+    dx = end_pose.position.x - start_pose.position.x
+    dy = end_pose.position.y - start_pose.position.y
+    distance_moved = sqrt(dx**2 + dy**2)
     
     print(f"Distance moved: {distance_moved:.2f} mm")
     
