@@ -98,10 +98,10 @@ def Exploration(robot: cozmo.robot.Robot):
 
     robotPose = Frame2D.fromPose(robot.pose)
     possible_map_positions = [
-        robotPose + Frame2D.fromTranslation(distance_mm(100), 0),
-        robotPose + Frame2D.fromTranslation(-distance_mm(100), 0),
-        robotPose + Frame2D.fromTranslation(0, distance_mm(100)),
-        robotPose + Frame2D.fromTranslation(0, -distance_mm(100)),
+        Frame2D.fromXYA(robotPose.x + distance_mm(100), 0),
+        Frame2D.fromXYA(robotPose.x - distance_mm(100), 0),
+        Frame2D.fromXYA(0, robotPose.y + distance_mm(100)),
+        Frame2D.fromXYA(0, robotPose.y - distance_mm(100)),
     ]
     print("Robot Pose: " + str(robotPose))
     print("Map: " + str(map))
