@@ -19,21 +19,6 @@ cubes = {cozmo.objects.LightCube1Id: [False, None],
 obstacles = []
 map = dict()
 
-# --- path / obstacle helper utilities ---------------------------------
-def _frame2d_to_xy(f: Frame2D):
-    """Return (x,y) in millimetres for a Frame2D-like object.
-    Handles Frame2D instances and objects with a .mat attribute.
-    """
-    try:
-        # Frame2D provides x() and y()
-        return float(f.x()), float(f.y())
-    except Exception:
-        # try matrix-backed
-        try:
-            return float(f.mat[0,2]), float(f.mat[1,2])
-        except Exception:
-            raise ValueError("Can't convert to x,y: %s" % str(f))
-
 
 def _distance_point_to_segment(px, py, x1, y1, x2, y2):
     """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
@@ -57,20 +42,20 @@ def _distance_point_to_segment(px, py, x1, y1, x2, y2):
     return math.hypot(px - cx, py - cy)
 
 
-def is_path_blocked(start_f: Frame2D, end_f: Frame2D, obstacles_list, clearance_mm=50.0):
+def is_path_blocked(start_f: Frame2D, end_f, obstacles_list, clearance_mm=50.0):
     """Check whether any obstacle in obstacles_list lies within clearance_mm
     (plus obstacle radius if available) of the straight-line segment from
     start_f to end_f. Returns (blocked: bool, obstacle, distance_mm).
     """
-    sx, sy = _frame2d_to_xy(start_f)
-    ex, ey = _frame2d_to_xy(end_f)
+    sx, sy = start_f.x(), start_f.y()
+    ex, ey = end_f[0], end_f[1]
     for obs in obstacles_list:
         # some observed objects may not yet have a pose
         if not hasattr(obs, 'pose') or obs.pose is None:
             continue
         try:
             of = Frame2D.fromPose(obs.pose)
-            ox, oy = _frame2d_to_xy(of)
+            ox, oy = obs.x(), obs.y()
         except Exception:
             continue
         dist = _distance_point_to_segment(ox, oy, sx, sy, ex, ey)
@@ -98,10 +83,10 @@ def Exploration(robot: cozmo.robot.Robot):
 
     robotPose = Frame2D.fromPose(robot.pose)
     possible_map_positions = [
-        Frame2D.fromXYA(robotPose.x + distance_mm(100), 0),
-        Frame2D.fromXYA(robotPose.x - distance_mm(100), 0),
-        Frame2D.fromXYA(0, robotPose.y + distance_mm(100)),
-        Frame2D.fromXYA(0, robotPose.y - distance_mm(100)),
+        (robotPose.x() + 100, robotPose.y()),
+        (robotPose.x() - 100, robotPose.y()),
+        (robotPose.x(), robotPose.y() + 100),
+        (robotPose.x(), robotPose.y() - 100)
     ]
     print("Robot Pose: " + str(robotPose))
     print("Map: " + str(map))
@@ -132,7 +117,7 @@ def Exploration(robot: cozmo.robot.Robot):
                 possible_map_positions.remove(position)
 
         #Update map with positions
-        map[(robotPose.x_mm, robotPose.y_mm)] = possible_map_positions
+        map[(robotPose.x(), robotPose.y())] = possible_map_positions
 
         #go to next unseen position
         for position in possible_map_positions:
@@ -142,7 +127,7 @@ def Exploration(robot: cozmo.robot.Robot):
                 left_speed, right_speed = velocity_to_track_speed(target_velocity, wheelDistance)
                 robot.drive_wheels(left_speed, right_speed)
                 #Estimate time to reach target
-                distance_to_target = math.hypot(position.x_mm - robotPose.x_mm, position.y_mm - robotPose.y_mm)
+                distance_to_target = math.hypot(position[0] - robotPose.x(), position[1] - robotPose.y())
                 estimated_time = distance_to_target / target_velocity
                 time.sleep(estimated_time)
                 robot.stop_all_motors()
