@@ -13,9 +13,9 @@ def explorewithcamera(robot: cozmo.robot.Robot):
         raw1 = img1.raw_image
         gray1 = np.array(raw1.convert('L'))
         robot.drive_wheels(150, 150)
-        time.sleep(0.5)
-        robot.drive_wheels(0, 0)
-        time.sleep(0.1)
+        time.sleep(0.4)
+        #robot.drive_wheels(0, 0)
+        #time.sleep(0.1)
         img2 = robot.world.latest_image
         if img2 is None:
             continue 
@@ -27,8 +27,8 @@ def explorewithcamera(robot: cozmo.robot.Robot):
         if movement_score <5:
             print("No visual movement detected")
             robot.drive_wheels(-150, -150)
-            time.sleep(1.0)
             robot.drive_wheels(0, 0)
+            time.sleep(0.4)
             robot.turn_in_place(degrees(90)).wait_for_completed()
         else:
             print("Visual movement detected")
