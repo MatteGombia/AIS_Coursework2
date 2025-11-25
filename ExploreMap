@@ -1,112 +1,233 @@
 import cozmo
 import time
-from cozmo.util import degrees
+from cozmo.util import degrees, distance_mm
+from cozmo.objects import LightCube
 import numpy as np
 import matplotlib.pyplot as plt
 import math
 
-class M:
-    def __init__(self):
-        self.x = 0.0
-        self.y = 0.0
-        self.t = 0.0
-        self.w = []
-        self.p = [(0.0, 0.0)]
-        self.fig, self.ax = plt.subplots(figsize=(10, 10))
-        self.ax.set_xlim(-1000, 1000)
-        self.ax.set_ylim(-1000, 1000)
-        self.ax.set_aspect('equal')
-        self.ax.grid(True, alpha=0.3)
-        plt.ion()
-        plt.show()
+#Tracking variables
+robot_x = 0
+robot_y = 0  
+robot_angle = 0
+path = []
+walls = []
+cubes_found = []
+cubes_rescued = []
+rescued_ids = []
+start_time = time.time()
+
+#Setup the plot
+fig, ax = plt.subplots(figsize=(10, 10))
+plt.ion()
+plt.show()
+
+def update_position(left_speed, right_speed, duration):
+    global robot_x, robot_y, robot_angle, path
+    
+    #Wheel movement
+    left_dist = left_speed * duration
+    right_dist = right_speed * duration
+    
+    #If both wheels same speed, go straight
+    if abs(left_dist - right_dist) < 0.1:
+        distance = (left_dist + right_dist) / 2
+        robot_x = robot_x + distance * math.cos(robot_angle)
+        robot_y = robot_y + distance * math.sin(robot_angle)
+    else:
+        #Turning
+        wheelbase = 45
+        radius = wheelbase * (left_dist + right_dist) / (2 * (right_dist - left_dist))
+        angle_change = (right_dist - left_dist) / wheelbase
         
-    def upd(self, l, r, d):
-        wb = 45.0
-        ld = l * d
-        rd = r * d
-        if abs(ld - rd) < 0.1:
-            dist = (ld + rd) / 2
-            self.x += dist * math.cos(self.t)
-            self.y += dist * math.sin(self.t)
-        else:
-            rad = wb * (ld + rd) / (2 * (rd - ld))
-            ang = (rd - ld) / wb
-            self.x += rad * (math.sin(self.t + ang) - math.sin(self.t))
-            self.y -= rad * (math.cos(self.t + ang) - math.cos(self.t))
-            self.t += ang
-        self.t = math.atan2(math.sin(self.t), math.cos(self.t))
-        self.p.append((self.x, self.y))
+        robot_x = robot_x + radius * (math.sin(robot_angle + angle_change) - math.sin(robot_angle))
+        robot_y = robot_y - radius * (math.cos(robot_angle + angle_change) - math.cos(robot_angle))
+        robot_angle = robot_angle + angle_change
     
-    def turn(self, a):
-        self.t += math.radians(a)
-        self.t = math.atan2(math.sin(self.t), math.cos(self.t))
-        self.p.append((self.x, self.y))
+    path.append((robot_x, robot_y))
+
+def add_wall():
+    global walls, robot_x, robot_y, robot_angle
+    #When it hits something, draw a wall line there
+    wall_x = robot_x + 80 * math.cos(robot_angle)
+    wall_y = robot_y + 80 * math.sin(robot_angle)
     
-    def wall(self, d=100):
-        wx = self.x + d * math.cos(self.t)
-        wy = self.y + d * math.sin(self.t)
-        wl = 200
-        wa = self.t + math.pi / 2
-        x1 = wx - (wl / 2) * math.cos(wa)
-        y1 = wy - (wl / 2) * math.sin(wa)
-        x2 = wx + (wl / 2) * math.cos(wa)
-        y2 = wy + (wl / 2) * math.sin(wa)
-        self.w.append((x1, y1, x2, y2))
+    #Make the wall perpendicular to where we're facing
+    perp_angle = robot_angle + math.pi / 2
+    wall_x1 = wall_x - 100 * math.cos(perp_angle)
+    wall_y1 = wall_y - 100 * math.sin(perp_angle)
+    wall_x2 = wall_x + 100 * math.cos(perp_angle)
+    wall_y2 = wall_y + 100 * math.sin(perp_angle)
     
-    def draw(self):
-        self.ax.clear()
-        self.ax.set_xlim(min(-1000, self.x - 500), max(1000, self.x + 500))
-        self.ax.set_ylim(min(-1000, self.y - 500), max(1000, self.y + 500))
-        self.ax.set_aspect('equal')
-        self.ax.grid(True, alpha=0.3)
-        if len(self.p) > 1:
-            px = [p[0] for p in self.p]
-            py = [p[1] for p in self.p]
-            self.ax.plot(px, py, 'b-', alpha=0.5, linewidth=1)
-        for w in self.w:
-            self.ax.plot([w[0], w[2]], [w[1], w[3]], 'r-', linewidth=3)
-        self.ax.plot(self.x, self.y, 'go', markersize=10)
-        ax = self.x + 80 * math.cos(self.t)
-        ay = self.y + 80 * math.sin(self.t)
-        self.ax.arrow(self.x, self.y, ax - self.x, ay - self.y, head_width=30, head_length=30, fc='green', ec='green')
-        plt.draw()
-        plt.pause(0.01)
+    walls.append((wall_x1, wall_y1, wall_x2, wall_y2))
+
+def add_cube(distance):
+    global cubes_found
+    cube_x = robot_x + distance * math.cos(robot_angle)
+    cube_y = robot_y + distance * math.sin(robot_angle)
+    cubes_found.append((cube_x, cube_y))
+
+def add_rescued(distance):
+    global cubes_rescued
+    cube_x = robot_x + distance * math.cos(robot_angle)
+    cube_y = robot_y + distance * math.sin(robot_angle)
+    cubes_rescued.append((cube_x, cube_y))
+
+def draw_map():
+    global ax, robot_x, robot_y, robot_angle
+    ax.clear()
+    
+    #Centre view on robot
+    ax.set_xlim(robot_x - 600, robot_x + 600)
+    ax.set_ylim(robot_y - 600, robot_y + 600)
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3)
+    
+    elapsed = int(time.time() - start_time)
+    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Found: {len(cubes_found)} | Rescued: {len(cubes_rescued)}')
+    
+    #Draw the path
+    if len(path) > 1:
+        path_xs = [p[0] for p in path]
+        path_ys = [p[1] for p in path]
+        ax.plot(path_xs, path_ys, 'b-', alpha=0.5)
+    
+    #Draw walls
+    for wall in walls:
+        ax.plot([wall[0], wall[2]], [wall[1], wall[3]], 'r-', linewidth=3)
+    
+    #Draw cubes (yellow squares)
+    for cube in cubes_found:
+        ax.plot(cube[0], cube[1], 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
+    
+    #Draw rescued cubes (cyan triangles)
+    for rescued in cubes_rescued:
+        ax.plot(rescued[0], rescued[1], 'c^', markersize=15, markeredgecolor='blue', markeredgewidth=2)
+    
+    #Draw Cozmo
+    ax.plot(robot_x, robot_y, 'go', markersize=10)
+    
+    #Arrow showing which way the Cozmo is facing
+    arrow_len = 80
+    arrow_x = robot_x + arrow_len * math.cos(robot_angle)
+    arrow_y = robot_y + arrow_len * math.sin(robot_angle)
+    ax.arrow(robot_x, robot_y, arrow_x - robot_x, arrow_y - robot_y, 
+             head_width=30, head_length=30, fc='green', ec='green')
+    
+    plt.draw()
+    plt.pause(0.01)
+
+def print_stats():
+    elapsed = time.time() - start_time
+    
+    #Calculate total distance traveled
+    total_dist = 0
+    for i in range(1, len(path)):
+        dx = path[i][0] - path[i-1][0]
+        dy = path[i][1] - path[i-1][1]
+        total_dist += math.sqrt(dx*dx + dy*dy)
+    
+    print("\n=== STATS ===")
+    print(f"Time: {elapsed:.1f}s")
+    print(f"Distance: {total_dist:.0f}mm")
+    print(f"Walls: {len(walls)}")
+    print(f"Cubes found: {len(cubes_found)}")
+    print(f"Cubes rescued: {len(cubes_rescued)}")
+    if len(cubes_found) > 0:
+        print(f"Success: {len(cubes_rescued)}/{len(cubes_found)} ({100*len(cubes_rescued)/len(cubes_found):.0f}%)")
 
 def explore(robot: cozmo.robot.Robot):
+    global robot_angle, rescued_ids
+    
     robot.camera.image_stream_enabled = True
-    m = M()
+    robot.set_lift_height(0.0).wait_for_completed()
+    
+    print("Starting exploration...")
+    
     try:
         while True:
-            i1 = robot.world.latest_image
-            if i1 is None:
+            #Check if any cubes are visible
+            for obj in robot.world.visible_objects:
+                if isinstance(obj, LightCube) and obj.object_id not in rescued_ids:
+                    dist = math.sqrt(obj.pose.position.x**2 + obj.pose.position.y**2)
+                    add_cube(dist)
+                    print(f"Found cube at {dist:.0f}mm!")
+                    
+                    robot.drive_wheels(0, 0)
+                    time.sleep(0.2)
+                    
+                    #Try to go get it
+                    try:
+                        robot.go_to_object(obj, distance_mm(50.0)).wait_for_completed(timeout=10)
+                        pickup = robot.pickup_object(obj, num_retries=2)
+                        pickup.wait_for_completed(timeout=15)
+                        
+                        if pickup.has_succeeded:
+                            rescued_ids.append(obj.object_id)
+                            add_rescued(dist)
+                            print(f"Got it!")
+                            time.sleep(1)
+                            robot.set_lift_height(0.0).wait_for_completed()
+                        else:
+                            print("Missed it :(")
+                    except:
+                        print("Something went wrong picking up cube")
+                    
+                    time.sleep(0.5)
+                    draw_map()
+                    break
+            
+            #Get first image
+            img1 = robot.world.latest_image
+            if img1 is None:
                 time.sleep(0.1)
                 continue
-            g1 = np.array(i1.raw_image.convert('L'))
-            s = 150
-            dt = 0.4
-            robot.drive_wheels(s, s)
-            time.sleep(dt)
-            m.upd(s, s, dt)
-            i2 = robot.world.latest_image
-            if i2 is None:
+            
+            gray1 = np.array(img1.raw_image.convert('L'))
+            
+            #Move forward a bit
+            robot.drive_wheels(150, 150)
+            time.sleep(0.4)
+            update_position(150, 150, 0.4)
+            
+            #Get second image
+            img2 = robot.world.latest_image
+            if img2 is None:
                 continue
-            g2 = np.array(i2.raw_image.convert('L'))
-            diff = np.mean(np.abs(g1.astype(float) - g2.astype(float)))
-            if diff < 5:
+            
+            gray2 = np.array(img2.raw_image.convert('L'))
+            
+            #Compare images - if not much changed, we probably hit something
+            difference = np.mean(np.abs(gray1.astype(float) - gray2.astype(float)))
+            
+            if difference < 5:
+                #Hit a wall!
                 robot.drive_wheels(0, 0)
                 time.sleep(0.1)
-                m.wall(80)
+                
+                add_wall()
+                
+                #Back up
                 robot.drive_wheels(-150, -150)
                 time.sleep(0.4)
-                m.upd(-150, -150, 0.4)
+                update_position(-150, -150, 0.4)
+                
                 robot.drive_wheels(0, 0)
                 time.sleep(0.2)
+                
+                #Turn 90 degrees
                 robot.turn_in_place(degrees(90)).wait_for_completed()
-                m.turn(90)
+                robot_angle = robot_angle + math.radians(90)
+                
                 time.sleep(0.3)
-            m.draw()
+            
+            draw_map()
+            
     except KeyboardInterrupt:
+        print("\nStopping...")
         robot.drive_wheels(0, 0)
+        robot.set_lift_height(0.0).wait_for_completed()
+        print_stats()
         plt.ioff()
         plt.show()
 
