@@ -127,7 +127,7 @@ def print_stats():
         dy = path[i][1] - path[i-1][1]
         total_dist += math.sqrt(dx*dx + dy*dy)
     
-    print("\n=== STATS ===")
+    print("\nStats")
     print(f"Time: {elapsed:.1f}s")
     print(f"Distance: {total_dist:.0f}mm")
     print(f"Walls: {len(walls)}")
@@ -142,7 +142,7 @@ def explore(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
     robot.set_lift_height(0.0).wait_for_completed()
     
-    print("Starting exploration...")
+    print("Starting exploration")
     
     try:
         while True:
@@ -151,7 +151,7 @@ def explore(robot: cozmo.robot.Robot):
                 if isinstance(obj, LightCube) and obj.object_id not in rescued_ids:
                     dist = math.sqrt(obj.pose.position.x**2 + obj.pose.position.y**2)
                     add_cube(dist)
-                    print(f"Found cube at {dist:.0f}mm!")
+                    print(f"Found a cube at {dist:.0f}mm!")
                     
                     robot.drive_wheels(0, 0)
                     time.sleep(0.2)
@@ -165,13 +165,13 @@ def explore(robot: cozmo.robot.Robot):
                         if pickup.has_succeeded:
                             rescued_ids.append(obj.object_id)
                             add_rescued(dist)
-                            print(f"Got it!")
+                            print(f"Picked up cube")
                             time.sleep(1)
                             robot.set_lift_height(0.0).wait_for_completed()
                         else:
-                            print("Missed it :(")
+                            print("Failed to pick up cube")
                     except:
-                        print("Something went wrong picking up cube")
+                        print("Something went wrong whilst picking up cube")
                     
                     time.sleep(0.5)
                     draw_map()
@@ -224,7 +224,7 @@ def explore(robot: cozmo.robot.Robot):
             draw_map()
             
     except KeyboardInterrupt:
-        print("\nStopping...")
+        print("\nStopping")
         robot.drive_wheels(0, 0)
         robot.set_lift_height(0.0).wait_for_completed()
         print_stats()
