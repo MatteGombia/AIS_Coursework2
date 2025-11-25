@@ -29,7 +29,7 @@ def update_position(left_speed, right_speed, duration):
     left_dist = left_speed * duration
     right_dist = right_speed * duration
     
-    #If both wheels same speed, go straight
+    #If both wheels are at the same speed, then go straight
     if abs(left_dist - right_dist) < 0.1:
         distance = (left_dist + right_dist) / 2
         robot_x = robot_x + distance * math.cos(robot_angle)
