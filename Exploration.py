@@ -115,7 +115,7 @@ def choose_next_position(possible_map_positions):
     for position in possible_map_positions:
         position_seen = False
         print("Possible position to explore: " + str(position))
-        for map_key in map_key:
+        for map_key in map.keys():
             if position > map_key[0]-RANGE_MAP_KEY and position < map_key[0]+RANGE_MAP_KEY and position > map_key[1]-RANGE_MAP_KEY and position < map_key[1]+RANGE_MAP_KEY:
                 position_seen = True
         if(not position_seen):
