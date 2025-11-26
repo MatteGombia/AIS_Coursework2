@@ -384,7 +384,7 @@ def choose_next_position(possible_map_positions):
         position_seen = False
         print("Possible position to explore: " + str(position))
         for map_key in map.keys():
-            if position > map_key[0]-RANGE_MAP_KEY and position < map_key[0]+RANGE_MAP_KEY and position > map_key[1]-RANGE_MAP_KEY and position < map_key[1]+RANGE_MAP_KEY:
+            if position[0] > map_key[0]-RANGE_MAP_KEY and position[0] < map_key[0]+RANGE_MAP_KEY and position[1] > map_key[1]-RANGE_MAP_KEY and position[1] < map_key[1]+RANGE_MAP_KEY:
                 position_seen = True
         if(not position_seen):
             return position
@@ -416,6 +416,14 @@ def explore(robot: cozmo.robot.Robot):
     
     try:
         while True:
+            #Do a 360 degree scan for cubes at current position
+            robot.drive_wheels(0, 0)
+            time.sleep(0.2)
+            scan_for_cubes(robot)
+            
+            #Small pause between navigation cycles
+            time.sleep(0.5)
+
             #Choose next position to explore (nearest to origin that we haven't visited)
             #Remove blocked positions from possible map p
             possible_map_positions=add_reachable_position_to_map(robot)
@@ -428,18 +436,10 @@ def explore(robot: cozmo.robot.Robot):
             target = choose_next_position(possible_map_positions)
             
             #Try to move to that position
-            reached = go_to_new_position(robot, target.x(), target.y())
+            reached = go_to_new_position(robot, target[0], target[1])
             
             if not reached:
                 print("Couldn't reach target, choosing new position")
-            
-            #Do a 360 degree scan for cubes at current position
-            robot.drive_wheels(0, 0)
-            time.sleep(0.2)
-            scan_for_cubes(robot)
-            
-            #Small pause between navigation cycles
-            time.sleep(0.5)
             
     except KeyboardInterrupt:
         print("\nStopping")
