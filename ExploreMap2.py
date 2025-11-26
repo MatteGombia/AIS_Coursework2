@@ -1,7 +1,7 @@
 import cozmo
 import time
-from cozmo.util import degrees, distance_mm
-from cozmo.objects import LightCube
+from cozmo.util import degrees, distance_mm, Frame2D
+from cozmo.objects import LightCube, LightCube1Id, LightCube2Id, LightCube3Id
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -16,9 +16,9 @@ cubes_found = []
 cubes_rescued = []
 rescued_ids = []
 start_time = time.time()
-visited_positions = set()
-GRID_CELL_SIZE = 150
-MOVE_DISTANCE = 150
+visited_positions = set()  #Track visited grid cells
+GRID_CELL_SIZE = 150  #Size of each grid cell in mm
+MOVE_DISTANCE = 150  #Distance to move per step
 
 #Setup the plot
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -152,7 +152,7 @@ def choose_new_position():
     #Choose the nearest unvisited position to the starting point (0, 0)
     global visited_positions, robot_x, robot_y
     
-    #Search radius
+    #Search radius - how far out to look for unvisited cells
     max_radius = 20  #Check up to 20 grid cells away
     
     best_position = None
@@ -181,12 +181,12 @@ def choose_new_position():
                         best_distance = dist_from_origin
                         best_position = (world_x, world_y)
         
-        #If it found something at this radius, return it
+        #If we found something at this radius, return it
         if best_position is not None:
             print(f"Chose position {best_position}, distance from origin: {best_distance:.0f}mm")
             return best_position
     
-    #If nothing is found, pick a random unvisited spot near current position
+    #If nothing found, pick a random unvisited spot near current position
     print("No nearby unvisited positions found, exploring near current position")
     angle = np.random.uniform(0, 2 * math.pi)
     distance = GRID_CELL_SIZE * 2
@@ -214,25 +214,17 @@ def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
         desired_angle = math.atan2(dy, dx)
         angle_diff = desired_angle - robot_angle
         
-        #Normalise angle difference to [-pi, pi]
+        #Normalize angle difference to [-pi, pi]
         while angle_diff > math.pi:
             angle_diff -= 2 * math.pi
         while angle_diff < -math.pi:
             angle_diff += 2 * math.pi
         
-        #If it needs to turn significantly, turn first
+        #If we need to turn significantly, turn first
         if abs(angle_diff) > math.radians(15):
-            turn_speed = 150
-            wheelbase = 45
-            turn_time = (abs(angle_diff) * wheelbase) / (2 * turn_speed)
-            
-            if angle_diff > 0:
-                robot.drive_wheels(turn_speed, -turn_speed)
-            else:
-                robot.drive_wheels(-turn_speed, turn_speed)
-            
-            time.sleep(turn_time)
-            robot.drive_wheels(0, 0)
+            #Convert angle_diff from radians to degrees and turn
+            turn_angle = math.degrees(angle_diff)
+            robot.turn_in_place(degrees(turn_angle)).wait_for_completed()
             robot_angle = desired_angle
             time.sleep(0.1)
             draw_map()
@@ -249,7 +241,7 @@ def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
         gray1 = np.array(img1.raw_image.convert('L'))
         
         #Move forward one step
-        move_time = MOVE_DISTANCE / 150
+        move_time = MOVE_DISTANCE / 150  #150 mm/s speed
         robot.drive_wheels(150, 150)
         time.sleep(move_time)
         update_position(150, 150, move_time)
@@ -262,11 +254,11 @@ def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
         
         gray2 = np.array(img2.raw_image.convert('L'))
         
-        #Compare images - if not much changed, it probably hit something
+        #Compare images - if not much changed, we probably hit something
         difference = np.mean(np.abs(gray1.astype(float) - gray2.astype(float)))
         
         if difference < 5:
-            #Hit a wall
+            #Hit a wall!
             robot.drive_wheels(0, 0)
             time.sleep(0.1)
             
@@ -281,18 +273,13 @@ def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
             robot.drive_wheels(0, 0)
             time.sleep(0.2)
             
-            turn_speed = 150
-            wheelbase = 45
-            turn_time = (math.radians(90) * wheelbase) / (2 * turn_speed)
-            
-            robot.drive_wheels(turn_speed, -turn_speed)
-            time.sleep(turn_time)
-            robot.drive_wheels(0, 0)
-            
+            #Turn 90 degrees to try to go around
+            robot.turn_in_place(degrees(90)).wait_for_completed()
             robot_angle = robot_angle + math.radians(90)
             time.sleep(0.3)
             draw_map()
             
+            #Return False to indicate we couldn't reach the target directly
             return False
         
         draw_map()
@@ -306,16 +293,28 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
     #Do a 360-degree stepwise scan looking for cubes
     global robot_angle, rescued_ids
     
-    steps = 8  45 degrees each
-    step_angle = 360 / steps
+    steps = 18  #18 steps * 20 degrees = 360 degrees
+    step_angle = 20
     
     print("Scanning 360 degrees for cubes...")
     
+    cubeIDs = (LightCube1Id, LightCube2Id, LightCube3Id)
+    
     for step in range(steps):
-        #Check if any cubes are visible at this angle
-        for obj in robot.world.visible_objects:
-            if isinstance(obj, LightCube) and obj.object_id not in rescued_ids:
-                dist = math.sqrt(obj.pose.position.x**2 + obj.pose.position.y**2)
+        #Check each cube ID to see if visible at this angle
+        for cubeID in cubeIDs:
+            cube = robot.world.get_light_cube(cubeID)
+            if cube is not None and cube.is_visible:
+                #Check if we've already rescued this cube
+                if cube.object_id in rescued_ids:
+                    continue
+                
+                #Get cube's 2D pose
+                cubePose2D = Frame2D.fromPose(cube.pose)
+                print(f"Found cube {cubeID} - 2D frame: {cubePose2D}")
+                
+                #Calculate distance to cube
+                dist = math.sqrt(cube.pose.position.x**2 + cube.pose.position.y**2)
                 add_cube(dist)
                 print(f"Found a cube at {dist:.0f}mm during scan!")
                 
@@ -324,38 +323,30 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
                 
                 #Try to go get it
                 try:
-                    robot.go_to_object(obj, distance_mm(50.0)).wait_for_completed(timeout=10)
-                    pickup = robot.pickup_object(obj, num_retries=2)
+                    robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed(timeout=10)
+                    pickup = robot.pickup_object(cube, num_retries=2)
                     pickup.wait_for_completed(timeout=15)
                     
                     if pickup.has_succeeded:
-                        rescued_ids.append(obj.object_id)
+                        rescued_ids.append(cube.object_id)
                         add_rescued(dist)
-                        print(f"Picked up cube")
+                        print(f"Picked up cube {cubeID}")
                         time.sleep(1)
                         robot.set_lift_height(0.0).wait_for_completed()
                     else:
-                        print("Failed to pick up cube")
+                        print(f"Failed to pick up cube {cubeID}")
                 except:
-                    print("Something went wrong whilst picking up cube")
+                    print(f"Something went wrong whilst picking up cube {cubeID}")
                 
                 time.sleep(0.5)
                 draw_map()
-                return True  #Found and cube, return to main loop
+                return True  #Found and attempted cube rescue, return to main loop
         
         #Turn to next scan position
         if step < steps - 1:  #Don't turn on the last step
-            #Manual wheel turn
-            turn_speed = 150
-            wheelbase = 45
-            turn_time = (math.radians(step_angle) * wheelbase) / (2 * turn_speed)
-            
-            robot.drive_wheels(turn_speed, -turn_speed)
-            time.sleep(turn_time)
-            robot.drive_wheels(0, 0)
-            
+            robot.turn_in_place(degrees(step_angle)).wait_for_completed()
             robot_angle = robot_angle + math.radians(step_angle)
-            time.sleep(0.2)
+            time.sleep(0.1)
             draw_map()
     
     return False  #No cubes found
@@ -373,7 +364,7 @@ def explore(robot: cozmo.robot.Robot):
     
     try:
         while True:
-            #Choose next position to explore
+            #Choose next position to explore (nearest to origin that we haven't visited)
             target_x, target_y = choose_new_position()
             
             #Try to move to that position
@@ -382,11 +373,12 @@ def explore(robot: cozmo.robot.Robot):
             if not reached:
                 print("Couldn't reach target, choosing new position")
             
-            #360 degree scan for cubes at current position
+            #Do a 360 degree scan for cubes at current position
             robot.drive_wheels(0, 0)
             time.sleep(0.2)
             scan_for_cubes(robot)
             
+            #Small pause between navigation cycles
             time.sleep(0.5)
             
     except KeyboardInterrupt:
