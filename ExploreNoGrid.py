@@ -1,10 +1,11 @@
 import cozmo
 import time
-from cozmo.util import degrees, distance_mm, Frame2D
+from cozmo.util import degrees, distance_mm
 from cozmo.objects import LightCube, LightCube1Id, LightCube2Id, LightCube3Id
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+from frame2d import Frame2D
 
 #Tracking variables
 robot_x = 0
@@ -12,7 +13,9 @@ robot_y = 0
 robot_angle = 0
 path = []
 walls = []
-cubes_found = []
+cubes = {cozmo.objects.LightCube1Id: [False, None],
+         cozmo.objects.LightCube2Id: [False, None],
+         cozmo.objects.LightCube3Id: [False, None]}
 start_time = time.time()
 visited_positions = set()  #Track visited grid cells
 GRID_CELL_SIZE = 150  #Size of each grid cell in mm
@@ -93,8 +96,10 @@ def draw_map():
         ax.plot(wall_x, wall_y, 'rs', markersize=10, markeredgecolor='darkred', markeredgewidth=2)
     
     #Draw cubes (yellow squares)
-    for cube in cubes_found:
-        ax.plot(cube[0], cube[1], 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
+    cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
+    for cubeID in cubeIDs: 
+        if cubes[cubeID][0] == True:
+            ax.plot(cubes[cubeID][1][0], cubes[cubeID][1][1], 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
     
     #Draw Cozmo
     ax.plot(robot_x, robot_y, 'go', markersize=10)
@@ -123,7 +128,7 @@ def print_stats():
     print(f"Time: {elapsed:.1f}s")
     print(f"Distance: {total_dist:.0f}mm")
     print(f"Walls: {len(walls)}")
-    print(f"Cubes found: {len(cubes_found)}")
+    print(f"Cubes found: {len(cubes)}")
 
 def choose_new_position():
     #Choose the nearest unvisited position to the starting point (0, 0)
@@ -279,17 +284,15 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
     
     for step in range(steps):
         #Check each cube ID to see if visible at this angle
-        for cubeID in cubeIDs:
+        cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
+        for cubeID in cubeIDs: 
             cube = robot.world.get_light_cube(cubeID)
             if cube is not None and cube.is_visible:
-                #Get cube's 2D pose
                 cubePose2D = Frame2D.fromPose(cube.pose)
-                print(f"Found cube {cubeID} - 2D frame: {cubePose2D}")
-                
-                #Calculate distance to cube
-                dist = math.sqrt(cube.pose.position.x**2 + cube.pose.position.y**2)
-                add_cube(dist)
-                print(f"Found a cube at {dist:.0f}mm during scan!")
+                #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
+                cubes[cubeID][1] = cubePose2D
+                cubes[cubeID][0] = True
+                print(f"Found a cube at" + str(cubePose2D) + "mm during scan!")
                 
                 robot.drive_wheels(0, 0)
                 time.sleep(0.2)
