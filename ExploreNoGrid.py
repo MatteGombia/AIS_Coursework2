@@ -53,7 +53,7 @@ def update_position(left_speed, right_speed, duration):
     visited_positions.add((grid_x, grid_y))
 
 def get_grid_cell(x, y):
-    """Convert world coordinates to grid cell"""
+    #Convert world coordinates to grid cell
     return (round(x / GRID_CELL_SIZE), round(y / GRID_CELL_SIZE))
 
 def add_wall():
@@ -170,7 +170,7 @@ def choose_new_position():
     return (robot_x + distance * math.cos(angle), robot_y + distance * math.sin(angle))
 
 def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
-    """Move toward target position with wall detection. Returns True if reached, False if blocked."""
+    #Move toward target position with wall detection. Returns True if reached, False if blocked.
     global robot_x, robot_y, robot_angle
     
     max_attempts = 50  #Maximum movement attempts before giving up
@@ -267,7 +267,7 @@ def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
 
 
 def scan_for_cubes(robot: cozmo.robot.Robot):
-    """Do a 360-degree stepwise scan looking for cubes"""
+    #Do a 360-degree stepwise scan looking for cubes
     global robot_angle
     
     steps = 18  #18 steps * 20 degrees = 360 degrees
