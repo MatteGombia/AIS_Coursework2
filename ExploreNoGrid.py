@@ -372,7 +372,7 @@ def add_reachable_position_to_map(robot: cozmo.robot.Robot):
         (robotPose.x(), robotPose.y() - MOVE_DISTANCE)
     ]
     for position in possible_map_positions:
-        blocked = is_path_blocked(robotPose, position, obstacles, clearance_mm=80.0)
+        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=80.0)
         if blocked:
             print("Path to position %s is blocked by an obstacle." % str(position))
             possible_map_positions.remove(position)
@@ -391,7 +391,7 @@ def choose_next_position(possible_map_positions):
     return possible_map_positions[0]
 
 def handle_object_observed(evt, **kw):
-    global obstacles
+    global walls
     # This will be called whenever an EvtObjectDisappeared is dispatched -
     # whenever an Object goes out of view.
     if isinstance(evt.obj, CustomObject):
@@ -402,6 +402,7 @@ def handle_object_observed(evt, **kw):
 def explore(robot: cozmo.robot.Robot):
     global robot_angle, visited_positions
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
+    time.sleep(0.5)
     robot.set_head_angle(Angle(0)).wait_for_completed
     time.sleep(0.5)
 
