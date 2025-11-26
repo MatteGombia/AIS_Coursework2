@@ -322,23 +322,23 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
                 time.sleep(0.2)
                 
                 #Try to go get it
-                try:
-                    robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed(timeout=10)
-                    pickup = robot.pickup_object(cube, num_retries=2)
-                    pickup.wait_for_completed(timeout=15)
+                #try:
+                    #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed(timeout=10)
+                    #pickup = robot.pickup_object(cube, num_retries=2)
+                    #pickup.wait_for_completed(timeout=15)
                     
-                    if pickup.has_succeeded:
-                        rescued_ids.append(cube.object_id)
-                        add_rescued(dist)
-                        print(f"Picked up cube {cubeID}")
-                        time.sleep(1)
-                        robot.set_lift_height(0.0).wait_for_completed()
-                    else:
-                        print(f"Failed to pick up cube {cubeID}")
-                except:
-                    print(f"Something went wrong whilst picking up cube {cubeID}")
+                    #if pickup.has_succeeded:
+                        #rescued_ids.append(cube.object_id)
+                        #add_rescued(dist)
+                        #print(f"Picked up cube {cubeID}")
+                        #time.sleep(1)
+                        #robot.set_lift_height(0.0).wait_for_completed()
+                    #else:
+                        ##print(f"Failed to pick up cube {cubeID}")
+                #except:
+                    #print(f"Something went wrong whilst picking up cube {cubeID}")
                 
-                time.sleep(0.5)
+                #time.sleep(0.5)
                 draw_map()
                 return True  #Found and attempted cube rescue, return to main loop
         
