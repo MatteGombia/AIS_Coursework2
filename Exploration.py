@@ -9,15 +9,22 @@ from cozmo.objects import CustomObject
 from frame2d import Frame2D
 from cozmo_interface import wheelDistance, target_pose_to_velocity_linear,velocity_to_track_speed,track_speed_to_pose_change
 from cozmo.util import distance_mm, speed_mmps, degrees, Angle
+import matplotlib.pyplot as plt
+import math
 
 import time
-import math
 
 cubes = {cozmo.objects.LightCube1Id: [False, None],
          cozmo.objects.LightCube2Id: [False, None],
          cozmo.objects.LightCube3Id: [False, None]}
 obstacles = []
 map = dict()
+path = []
+start_time = time.time()
+
+RANGE_MAP_KEY = 20
+MOVE_DISTANCE = 100
+TOLERANCE = 20
 
 
 def _distance_point_to_segment(px, py, x1, y1, x2, y2):
@@ -76,82 +83,226 @@ def handle_object_observed(evt, **kw):
             if obstacle.object_id == evt.obj.object_id:
                 return
         obstacles.append(evt.obj)
+    
+def detect_cubes(robot: cozmo.robot.Robot):
+    cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
+    for cubeID in cubeIDs: 
+        cube = robot.world.get_light_cube(cubeID)
+        if cube is not None and cube.is_visible:
+            cubePose2D = Frame2D.fromPose(cube.pose)
+            print("   2D frame: " + str(cubePose2D))
+            #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
+            cubes[cubeID][1] = cubePose2D
+            cubes[cubeID][0] = True
+    
+def add_reachable_position_to_map(robot: cozmo.robot.Robot):
+    robotPose = Frame2D.fromPose(robot.pose)
+    possible_map_positions = [
+        (robotPose.x() + MOVE_DISTANCE, robotPose.y()),
+        (robotPose.x() - MOVE_DISTANCE, robotPose.y()),
+        (robotPose.x(), robotPose.y() + MOVE_DISTANCE),
+        (robotPose.x(), robotPose.y() - MOVE_DISTANCE)
+    ]
+    for position in possible_map_positions:
+        blocked = is_path_blocked(robotPose, position, obstacles, clearance_mm=80.0)
+        if blocked:
+            print("Path to position %s is blocked by an obstacle." % str(position))
+            possible_map_positions.remove(position)
+
+    return possible_map_positions
+
+def choose_next_position(possible_map_positions):
+    for position in possible_map_positions:
+        position_seen = False
+        print("Possible position to explore: " + str(position))
+        for map_key in map_key:
+            if position > map_key[0]-RANGE_MAP_KEY and position < map_key[0]+RANGE_MAP_KEY and position > map_key[1]-RANGE_MAP_KEY and position < map_key[1]+RANGE_MAP_KEY:
+                position_seen = True
+        if(not position_seen):
+            return position
+    return possible_map_positions[0]
+
+def draw_map():
+    global ax, robot_x, robot_y, robot_angle
+    ax.clear()
+    
+    #Centre view on robot
+    ax.set_xlim(robot_x - 600, robot_x + 600)
+    ax.set_ylim(robot_y - 600, robot_y + 600)
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3)
+    
+    elapsed = int(time.time() - start_time)
+    ax.set_title(f'Time: {elapsed}s | Walls: {len(obstacles)} | Found: {len(cubes)} | Rescued: {len(cubes)}')
+    
+    #Draw the path
+    if len(path) > 1:
+        path_xs = [p[0] for p in path]
+        path_ys = [p[1] for p in path]
+        ax.plot(path_xs, path_ys, 'b-', alpha=0.5)
+    
+    #Draw walls
+    for wall in obstacles:
+        ax.plot([wall[0], wall[1]])
+    
+    #Draw cubes (yellow squares)
+    for cube in cubes:
+        if cube[0] == True:
+            ax.plot(cube[1][0], cube[1][1], 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
+    
+    #Draw rescued cubes (cyan triangles)
+    # for rescued in cubes_rescued:
+    #     ax.plot(rescued[0], rescued[1], 'c^', markersize=15, markeredgecolor='blue', markeredgewidth=2)
+    
+    #Draw Cozmo
+    ax.plot(robot_x, robot_y, 'go', markersize=10)
+    
+    #Arrow showing which way the Cozmo is facing
+    arrow_len = 80
+    arrow_x = robot_x + arrow_len * math.cos(robot_angle)
+    arrow_y = robot_y + arrow_len * math.sin(robot_angle)
+    ax.arrow(robot_x, robot_y, arrow_x - robot_x, arrow_y - robot_y, 
+             head_width=30, head_length=30, fc='green', ec='green')
+    
+    plt.draw()
+    plt.pause(0.01)
+
+def go_to_position(robot: cozmo.robot.Robot, target_x, target_y):
+    #Move toward target position with wall detection. Returns True if reached, False if blocked.
+    global robot_x, robot_y, robot_angle
+    
+    max_attempts = 50  #Maximum movement attempts before giving up
+    attempts = 0
+    
+    while attempts < max_attempts:
+        #Calculate distance and angle to target
+        dx = target_x - robot_x
+        dy = target_y - robot_y
+        distance_to_target = math.sqrt(dx**2 + dy**2)
+        
+        #Check if we've reached the target (within tolerance)
+        if distance_to_target < TOLERANCE / 2:
+            print(f"Reached target position ({target_x:.0f}, {target_y:.0f})")
+            return True
+        
+        #Calculate desired angle to target
+        desired_angle = math.atan2(dy, dx)
+        angle_diff = desired_angle - robot_angle
+        
+        #Normalise angle difference to [-pi, pi]
+        while angle_diff > math.pi:
+            angle_diff -= 2 * math.pi
+        while angle_diff < -math.pi:
+            angle_diff += 2 * math.pi
+        
+        #If it needs to turn significantly, turn first
+        if abs(angle_diff) > math.radians(15):
+            turn_speed = 150
+            wheelbase = 45
+            turn_time = (abs(angle_diff) * wheelbase) / (2 * turn_speed)
+            
+            if angle_diff > 0:
+                robot.drive_wheels(turn_speed, -turn_speed)
+            else:
+                robot.drive_wheels(-turn_speed, turn_speed)
+            
+            time.sleep(turn_time)
+            robot.drive_wheels(0, 0)
+            robot_angle = desired_angle
+            time.sleep(0.1)
+            draw_map()
+            continue
+        
+        #Now move forward with wall detection
+        #Get first image
+        img1 = robot.world.latest_image
+        if img1 is None:
+            time.sleep(0.1)
+            attempts += 1
+            continue
+        
+        gray1 = np.array(img1.raw_image.convert('L'))
+        
+        #Move forward one step
+        move_time = MOVE_DISTANCE / 150
+        robot.drive_wheels(150, 150)
+        time.sleep(move_time)
+        #update_position(150, 150, move_time)
+        
+        #Get second image
+        img2 = robot.world.latest_image
+        if img2 is None:
+            attempts += 1
+            continue
+        
+        gray2 = np.array(img2.raw_image.convert('L'))
+        
+        #Compare images - if not much changed, it probably hit something
+        difference = np.mean(np.abs(gray1.astype(float) - gray2.astype(float)))
+        
+        if difference < 5:
+            #Hit a wall
+            robot.drive_wheels(0, 0)
+            time.sleep(0.1)
+            
+            add_wall()
+            print("Hit a wall while moving to target")
+            
+            #Back up
+            robot.drive_wheels(-150, -150)
+            time.sleep(move_time)
+            update_position(-150, -150, move_time)
+            
+            robot.drive_wheels(0, 0)
+            time.sleep(0.2)
+            
+            turn_speed = 150
+            wheelbase = 45
+            turn_time = (math.radians(90) * wheelbase) / (2 * turn_speed)
+            
+            robot.drive_wheels(turn_speed, -turn_speed)
+            time.sleep(turn_time)
+            robot.drive_wheels(0, 0)
+            
+            robot_angle = robot_angle + math.radians(90)
+            time.sleep(0.3)
+            draw_map()
+            
+            return False
+        
+        draw_map()
+        attempts += 1
+    
+    print("Max attempts reached, couldn't reach target")
+    return False
+    
+
 
 def Exploration(robot: cozmo.robot.Robot):
     found_cube = False
     search_steps = 18  #Amount of search cycle repetitions
 
     robotPose = Frame2D.fromPose(robot.pose)
-    possible_map_positions = [
-        (robotPose.x() + 100, robotPose.y()),
-        (robotPose.x() - 100, robotPose.y()),
-        (robotPose.x(), robotPose.y() + 100),
-        (robotPose.x(), robotPose.y() - 100)
-    ]
+    path.append((robotPose.x(), robotPose.y()))
     print("Robot Pose: " + str(robotPose))
     print("Map: " + str(map))
 
     try:
         for _ in range(search_steps):
-
-            cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
-            for cubeID in cubeIDs: 
-                cube = robot.world.get_light_cube(cubeID)
-                if cube is not None and cube.is_visible:
-                    cubePose2D = Frame2D.fromPose(cube.pose)
-                    print("   2D frame: " + str(cubePose2D))
-                    #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
-                    cubes[cubeID][1] = cubePose2D
-                    cubes[cubeID][0] = True
-
-            #time.sleep(0.1)
-
+            detect_cubes(robot)
             robot.turn_in_place(degrees(20)).wait_for_completed()
             time.sleep(0.1)
 
-        #Remove blocked positions from possible map positions
-        for position in possible_map_positions:
-            blocked = is_path_blocked(robotPose, position, obstacles, clearance_mm=80.0)
-            if blocked:
-                print("Path to position %s is blocked by an obstacle." % str(position))
-                possible_map_positions.remove(position)
+        #Remove blocked positions from possible map p
+        possible_map_positions=add_reachable_position_to_map(robot)
 
         #Update map with positions
         map[(robotPose.x(), robotPose.y())] = possible_map_positions
 
         #go to next unseen position
-        for position in possible_map_positions:
-            print("Possible position to explore: " + str(position))
-            if position not in map.keys():
-                # build target as a Frame2D in world coords, then express relative to robot frame
-                target_world = Frame2D.fromXYA(position[0], position[1], 0)
-                relative_target = robotPose.inverse().mult(target_world)
+        target = choose_next_position(possible_map_positions)
 
-                # controller returns (forward_mm_s, angular_rad_s)
-                forward, angular = target_pose_to_velocity_linear(relative_target)
-
-                # compute left/right wheel speeds
-                left_speed, right_speed = velocity_to_track_speed(forward, angular)
-                robot.drive_wheels(left_speed, right_speed)
-
-                # Estimate time to reach target (conservative). If forward speed is zero (rotating), wait a short time.
-                distance_to_target = math.hypot(position[0] - robotPose.x(), position[1] - robotPose.y())
-                forward_speed = abs(forward)
-                if forward_speed > 1e-3:
-                    estimated_time = distance_to_target / forward_speed
-                else:
-                    # rotating in place; estimate by angular distance to face target
-                    ang = math.atan2(position[1] - robotPose.y(), position[0] - robotPose.x()) - robotPose.angle()
-                    ang = (ang + math.pi) % (2*math.pi) - math.pi
-                    estimated_time = abs(ang) / (abs(angular) if abs(angular) > 1e-3 else 0.5)
-
-                # clamp a maximum wait to avoid long sleeps
-                estimated_time = min(estimated_time, 5.0)
-                time.sleep(estimated_time)
-                robot.stop_all_motors()
-                # refresh pose after motion
-                robotPose = Frame2D.fromPose(robot.pose)
-                break
+        print(target)
     
         time.sleep(0.2)
         if not found_cube:
