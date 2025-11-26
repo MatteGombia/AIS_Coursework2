@@ -67,10 +67,10 @@ def add_wall():
     walls.append((wall_x, wall_y))
 
 def add_cube(distance):
-    global cubes_found
+    global cubes
     cube_x = robot_x + distance * math.cos(robot_angle)
     cube_y = robot_y + distance * math.sin(robot_angle)
-    cubes_found.append((cube_x, cube_y))
+    cubes.append((cube_x, cube_y))
 
 def draw_map():
     global ax, robot_x, robot_y, robot_angle
@@ -83,7 +83,7 @@ def draw_map():
     ax.grid(True, alpha=0.3)
     
     elapsed = int(time.time() - start_time)
-    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {len(cubes_found)}')
+    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {len(cubes)}')
     
     #Draw the path
     if len(path) > 1:
@@ -99,7 +99,7 @@ def draw_map():
     cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
     for cubeID in cubeIDs: 
         if cubes[cubeID][0] == True:
-            ax.plot(cubes[cubeID][1][0], cubes[cubeID][1][1], 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
+            ax.plot(cubes[cubeID][1].x(), cubes[cubeID][1].y(), 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
     
     #Draw Cozmo
     ax.plot(robot_x, robot_y, 'go', markersize=10)
@@ -310,6 +310,7 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
 
 def explore(robot: cozmo.robot.Robot):
     global robot_angle, visited_positions
+    robot.set_head_angle(angle=0).wait_for_completed
     
     robot.camera.image_stream_enabled = True
     robot.set_lift_height(0.0).wait_for_completed()
