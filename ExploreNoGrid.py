@@ -402,7 +402,7 @@ def handle_object_observed(evt, **kw):
 def explore(robot: cozmo.robot.Robot):
     global robot_angle, visited_positions
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
-    robot.set_head_angle(angle=0).wait_for_completed
+    robot.set_head_angle(Angle(0)).wait_for_completed
     time.sleep(0.5)
 
     robot.camera.image_stream_enabled = True
