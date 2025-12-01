@@ -5,7 +5,7 @@ import time
 import numpy as np
 
 WHEEL_SPEED = 150
-DISTANCE_PER_MOVE = 100
+DISTANCE_PER_MOVE = 300
 CALIBRATION_TIME = 1.0
 IMAGE_DIFF_THRESHOLD = 8
 
@@ -101,14 +101,14 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
-                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading) * 2
-                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading) * 2
+                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)# * 2
+                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)# * 2
                     print(f"Moved left to ({x_current:.0f}, {y_current:.0f})")
                 else:
                     print("Both sides blocked!")
             else:
-                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading) * 2
-                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading) * 2
+                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)# * 2
+                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)# * 2
                 print(f"Moved right to ({x_current:.0f}, {y_current:.0f})")
             
             dx = x_target - x_current
