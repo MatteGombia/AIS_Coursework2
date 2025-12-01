@@ -78,7 +78,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             return True
         
         move_distance = min(DISTANCE_PER_MOVE, distance)
-        move_duration = move_distance / WHEEL_SPEED * 1.75
+        move_duration = move_distance / WHEEL_SPEED * 1.73
         
         wall_hit = check_for_wall(robot, move_duration)
         
@@ -89,7 +89,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * 1.75
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * 1.73
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
