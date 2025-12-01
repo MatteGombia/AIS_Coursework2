@@ -8,6 +8,7 @@ WHEEL_SPEED = 250
 DISTANCE_PER_MOVE = 100
 CALIBRATION_TIME = 1.0
 IMAGE_DIFF_THRESHOLD = 8
+CALIBRATED_CONSTANT = 1.74
 
 def calibrate(robot):
     print(f"Calibrating: driving at {WHEEL_SPEED}mm/s for {CALIBRATION_TIME}s")
@@ -78,7 +79,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             return True
         
         move_distance = min(DISTANCE_PER_MOVE, distance)
-        move_duration = move_distance / WHEEL_SPEED * 1.73
+        move_duration = move_distance / WHEEL_SPEED * CALIBRATED_CONSTANT
         
         wall_hit = check_for_wall(robot, move_duration)
         
@@ -89,7 +90,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * 1.73
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
