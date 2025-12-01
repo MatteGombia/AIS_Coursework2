@@ -12,7 +12,7 @@ CALIBRATION_TIME = 1.0
 IMAGE_DIFF_THRESHOLD = 8
 CALIBRATED_CONSTANT = 2.25
 
-# Global tracking for visualization
+# Global tracking for visualisation
 navigation_data = {
     'path': [],  # List of (x, y) positions
     'start': (0, 0),
@@ -54,7 +54,7 @@ def normalise_angle(angle):
     return angle
 
 def plot_navigation_results():
-    """Create visualization of navigation results"""
+    """Create visualisation of navigation results"""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
     # Extract path data
@@ -67,7 +67,7 @@ def plot_navigation_results():
     start_x, start_y = navigation_data['start']
     target_x, target_y = navigation_data['target']
     
-    # Plot 1: Path Visualization
+    # Plot 1: Path Visualisation
     ax1.plot(path_x, path_y, 'b-o', linewidth=2, markersize=4, label='Actual Path', alpha=0.7)
     ax1.plot([start_x, target_x], [start_y, target_y], 'g--', linewidth=2, label='Direct Path', alpha=0.5)
     ax1.plot(start_x, start_y, 'go', markersize=15, label='Start', markeredgecolor='darkgreen', markeredgewidth=2)
@@ -143,7 +143,7 @@ def plot_navigation_results():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"cozmo_navigation_{timestamp}.png"
     plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"\nVisualization saved as: {filename}")
+    print(f"\nVisualisation saved as: {filename}")
     
     plt.show()
 
@@ -206,7 +206,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     max_attempts = 40
     attempts = 0
     
-    # Initialize tracking
+    # Initialise tracking
     reset_navigation_data(x_current, y_current, x_target, y_target)
     start_time = time.time()
     
@@ -417,7 +417,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
     return False
 
 def navigate_rectilinear(robot, x_target, y_target, x_current=0, y_current=0):
-    # Initialize tracking
+    # Initialise tracking
     reset_navigation_data(x_current, y_current, x_target, y_target)
     start_time = time.time()
     
@@ -518,7 +518,7 @@ def cozmo_program(robot: cozmo.robot.Robot):
                 
                 if x_targ is not None:
                     navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
-                    print("\nGenerating visualization...")
+                    print("\nGenerating visualisation...")
                     plot_navigation_results()
             
             elif choice == '2':
@@ -528,13 +528,13 @@ def cozmo_program(robot: cozmo.robot.Robot):
                 
                 if x_targ is not None:
                     navigate_rectilinear(robot, x_targ, y_targ, x_curr, y_curr)
-                    print("\nGenerating visualization...")
+                    print("\nGenerating visualisation...")
                     plot_navigation_results()
             
             elif choice == '3':
                 print("\nNAVIGATE TO CUBE")
                 navigate_to_cube(robot)
-                print("\nGenerating visualization...")
+                print("\nGenerating visualisation...")
                 plot_navigation_results()
             
             elif choice == '4':
