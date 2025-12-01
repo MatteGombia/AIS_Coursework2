@@ -45,6 +45,13 @@ def check_for_wall(robot, move_duration):
     
     return False
 
+def normalize_angle(angle):
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
 def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
     tolerance = 50
     max_attempts = 40
@@ -55,10 +62,10 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     dx = x_target - x_current
     dy = y_target - y_current
     distance = math.hypot(dx, dy)
-    theta = math.atan2(dy, dx)
+    robot_heading = math.atan2(dy, dx)
     
-    print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(theta):.0f}°")
-    robot.turn_in_place(radians(theta)).wait_for_completed()
+    print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
+    robot.turn_in_place(radians(robot_heading)).wait_for_completed()
     time.sleep(0.2)
     
     while attempts < max_attempts:
@@ -78,9 +85,8 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         if wall_hit:
             print("Wall hit, attempting to go around...")
             
-            current_angle = math.atan2(dy, dx)
-            
             robot.turn_in_place(degrees(90)).wait_for_completed()
+            robot_heading += math.pi/2
             time.sleep(0.2)
             
             avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
@@ -89,34 +95,36 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             if side_hit:
                 print("Right blocked, trying left...")
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
+                robot_heading -= math.pi
                 time.sleep(0.2)
                 
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
-                    x_current += DISTANCE_PER_MOVE * math.cos(current_angle - math.pi/2)
-                    y_current += DISTANCE_PER_MOVE * math.sin(current_angle - math.pi/2)
+                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
                     print(f"Moved left to ({x_current:.0f}, {y_current:.0f})")
                 else:
                     print("Both sides blocked!")
             else:
-                x_current += DISTANCE_PER_MOVE * math.cos(current_angle + math.pi/2)
-                y_current += DISTANCE_PER_MOVE * math.sin(current_angle + math.pi/2)
+                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
                 print(f"Moved right to ({x_current:.0f}, {y_current:.0f})")
             
             dx = x_target - x_current
             dy = y_target - y_current
-            new_theta = math.atan2(dy, dx)
-            new_distance = math.hypot(dx, dy)
+            target_angle = math.atan2(dy, dx)
             
-            print(f"Reorienting: Distance {new_distance:.0f}mm, Angle {math.degrees(new_theta):.0f}°")
-            robot.turn_in_place(radians(new_theta)).wait_for_completed()
+            turn_amount = normalize_angle(target_angle - robot_heading)
+            
+            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° toward target")
+            robot.turn_in_place(radians(turn_amount)).wait_for_completed()
+            robot_heading = target_angle
             time.sleep(0.2)
             
         else:
-            current_angle = math.atan2(dy, dx)
-            x_current += move_distance * math.cos(current_angle)
-            y_current += move_distance * math.sin(current_angle)
+            x_current += move_distance * math.cos(robot_heading)
+            y_current += move_distance * math.sin(robot_heading)
             print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
         
         attempts += 1
@@ -133,6 +141,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
     y_current = 0
     x_target = target_distance * math.cos(target_angle)
     y_target = target_distance * math.sin(target_angle)
+    robot_heading = target_angle
     
     print(f"Moving {target_distance:.0f}mm at {math.degrees(target_angle):.0f}°")
     robot.turn_in_place(radians(target_angle)).wait_for_completed()
@@ -155,9 +164,8 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
         if wall_hit:
             print("Wall hit, going around...")
             
-            current_angle = math.atan2(dy, dx)
-            
             robot.turn_in_place(degrees(90)).wait_for_completed()
+            robot_heading += math.pi/2
             time.sleep(0.2)
             
             avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
@@ -165,28 +173,31 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             
             if side_hit:
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
+                robot_heading -= math.pi
                 time.sleep(0.2)
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
-                    x_current += DISTANCE_PER_MOVE * math.cos(current_angle - math.pi/2)
-                    y_current += DISTANCE_PER_MOVE * math.sin(current_angle - math.pi/2)
+                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
             else:
-                x_current += DISTANCE_PER_MOVE * math.cos(current_angle + math.pi/2)
-                y_current += DISTANCE_PER_MOVE * math.sin(current_angle + math.pi/2)
+                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
             
             dx = x_target - x_current
             dy = y_target - y_current
-            new_angle = math.atan2(dy, dx)
+            target_angle_new = math.atan2(dy, dx)
             
-            print(f"Reorienting toward target at {math.degrees(new_angle):.0f}°")
-            robot.turn_in_place(radians(new_angle)).wait_for_completed()
+            turn_amount = normalize_angle(target_angle_new - robot_heading)
+            
+            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° toward target")
+            robot.turn_in_place(radians(turn_amount)).wait_for_completed()
+            robot_heading = target_angle_new
             time.sleep(0.2)
             
         else:
-            current_angle = math.atan2(dy, dx)
-            x_current += move_distance * math.cos(current_angle)
-            y_current += move_distance * math.sin(current_angle)
+            x_current += move_distance * math.cos(robot_heading)
+            y_current += move_distance * math.sin(robot_heading)
         
         attempts += 1
         time.sleep(0.2)
