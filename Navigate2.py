@@ -117,7 +117,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             
             turn_amount = normalize_angle(target_angle - robot_heading)
             
-            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° toward target")
+            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
             robot.turn_in_place(radians(turn_amount)).wait_for_completed()
             robot_heading = target_angle
             time.sleep(0.2)
@@ -162,7 +162,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
         wall_hit = check_for_wall(robot, move_duration)
         
         if wall_hit:
-            print("Wall hit, going around...")
+            print("Wall hit, going around")
             
             robot.turn_in_place(degrees(90)).wait_for_completed()
             robot_heading += math.pi/2
@@ -190,7 +190,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             
             turn_amount = normalize_angle(target_angle_new - robot_heading)
             
-            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° toward target")
+            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
             robot.turn_in_place(radians(turn_amount)).wait_for_completed()
             robot_heading = target_angle_new
             time.sleep(0.2)
