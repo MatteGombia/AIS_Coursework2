@@ -45,6 +45,47 @@ def check_for_wall(robot, move_duration):
     
     return False
 
+def move_straight_with_avoidance(robot, target_distance, target_angle):
+    tolerance = 50
+    max_attempts = 30
+    attempts = 0
+    distance_covered = 0
+    
+    robot.turn_in_place(radians(target_angle)).wait_for_completed()
+    time.sleep(0.2)
+    
+    while attempts < max_attempts and distance_covered < target_distance - tolerance:
+        remaining = target_distance - distance_covered
+        move_distance = min(DISTANCE_PER_MOVE, remaining)
+        move_duration = move_distance / WHEEL_SPEED
+        
+        wall_hit = check_for_wall(robot, move_duration)
+        
+        if wall_hit:
+            print("Wall hit, trying to go around")
+            
+            robot.turn_in_place(degrees(90)).wait_for_completed()
+            time.sleep(0.2)
+            
+            test_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
+            test_hit = check_for_wall(robot, test_duration)
+            
+            if test_hit:
+                robot.turn_in_place(degrees(-180)).wait_for_completed()
+                time.sleep(0.2)
+                check_for_wall(robot, test_duration)
+            
+            robot.turn_in_place(radians(target_angle)).wait_for_completed()
+            time.sleep(0.2)
+        else:
+            distance_covered += move_distance
+            print(f"Moved {distance_covered:.0f}/{target_distance:.0f}mm")
+        
+        attempts += 1
+        time.sleep(0.2)
+    
+    return distance_covered >= target_distance - tolerance
+
 def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
     tolerance = 50
     max_attempts = 30
@@ -103,15 +144,19 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     return False
 
 def navigate_rectilinear(robot, x_target, y_target, x_current=0, y_current=0):
-    print(f"X-axis movement: {x_target - x_current:.0f}mm")
-    if abs(x_target - x_current) > 50:
-        navigate_with_avoidance(robot, x_target, y_current, x_current, y_current)
+    dx = x_target - x_current
+    dy = y_target - y_current
     
-    time.sleep(0.5)
+    if abs(dx) > 50:
+        print(f"Moving along X-axis: {dx:.0f}mm")
+        angle = 0 if dx > 0 else math.pi
+        move_straight_with_avoidance(robot, abs(dx), angle)
+        time.sleep(0.5)
     
-    print(f"Y-axis movement: {y_target - y_current:.0f}mm")
-    if abs(y_target - y_current) > 50:
-        navigate_with_avoidance(robot, x_target, y_target, x_target, y_current)
+    if abs(dy) > 50:
+        print(f"Moving along Y-axis: {dy:.0f}mm")
+        angle = math.pi/2 if dy > 0 else -math.pi/2
+        move_straight_with_avoidance(robot, abs(dy), angle)
 
 def navigate_to_cube(robot):
     print("Searching for cube...")
