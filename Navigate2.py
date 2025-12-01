@@ -83,7 +83,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         wall_hit = check_for_wall(robot, move_duration)
         
         if wall_hit:
-            print("Wall hit, attempting to go around...")
+            print("Wall hit, attempting to go around")
             
             robot.turn_in_place(degrees(90)).wait_for_completed()
             robot_heading += math.pi/2
@@ -93,7 +93,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
-                print("Right blocked, trying left...")
+                print("Right side blocked, trying left")
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
                 robot_heading -= math.pi
                 time.sleep(0.2)
@@ -221,7 +221,7 @@ def navigate_rectilinear(robot, x_target, y_target, x_current=0, y_current=0):
         move_straight_with_avoidance(robot, abs(dy), angle)
 
 def navigate_to_cube(robot):
-    print("Searching for cube...")
+    print("Searching for cube")
     robot.set_head_angle(degrees(0)).wait_for_completed()
     
     look_around = robot.start_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
@@ -312,7 +312,7 @@ def cozmo_program(robot: cozmo.robot.Robot):
                     calibrate(robot)
             
             elif choice == '5':
-                print("\nGoodbye!")
+                print("\nClosing")
                 break
             
             else:
