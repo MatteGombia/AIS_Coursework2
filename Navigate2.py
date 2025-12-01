@@ -96,8 +96,8 @@ def navigate_diagonal_with_avoidance(robot, x_target, y_target, x_current=0, y_c
         if wall_hit:
             print("Wall encountered, attempting to go around...")
             
-            # Try turning 45 degrees right first
-            robot.turn_in_place(degrees(45)).wait_for_completed()
+            # Try turning 90 degrees right first
+            robot.turn_in_place(degrees(90)).wait_for_completed()
             time.sleep(0.2)
             
             # Try a short move
@@ -107,19 +107,18 @@ def navigate_diagonal_with_avoidance(robot, x_target, y_target, x_current=0, y_c
             if wall_hit_again:
                 # Right didn't work, try left instead
                 print("Right blocked, trying left...")
-                robot.turn_in_place(degrees(-90)).wait_for_completed()  # Turn 90 left from original
+                robot.turn_in_place(degrees(-180)).wait_for_completed()  # Turn 180 left to face 90 left from original
                 time.sleep(0.2)
                 
                 wall_hit_third = check_for_wall(robot, test_duration)
                 
                 if wall_hit_third:
                     # Both sides blocked, turn around
-                    print("Both sides blocked, turning around...")
-                    robot.turn_in_place(degrees(135)).wait_for_completed()
+                    print("Both sides blocked, turning 90 degrees...")
+                    robot.turn_in_place(degrees(90)).wait_for_completed()
                     time.sleep(0.2)
             
             # Update approximate current position (rough estimate)
-            # In a real implementation, you'd want proper odometry
             x_current += DISTANCE_PER_MOVE * math.cos(theta)
             y_current += DISTANCE_PER_MOVE * math.sin(theta)
         else:
@@ -151,39 +150,11 @@ def navigate_rectilinear_with_avoidance(robot, x_target, y_target, x_current=0, 
     
     print("Rectilinear navigation complete!")
 
-def navigate_to_cube(robot, cube):
+def navigate_to_cube(robot):
     """
     Navigate to a detected cube.
     """
-    if cube:
-        cube_pose = cube.pose
-        dx = cube_pose.position.x
-        dy = cube_pose.position.y
-        print(f"Navigating to cube at ({dx:.2f}, {dy:.2f})")
-        navigate_diagonal_with_avoidance(robot, dx, dy)
-    else:
-        print("No cube detected!")
-
-def cozmo_program(robot: cozmo.robot.Robot):
-    # Enable camera for wall detection
-    robot.camera.image_stream_enabled = True
-    time.sleep(0.5)  # Give camera time to initialize
-    
-    # Calibrate (optional - comment out if already calibrated)
-    # calibrate(robot)
-    
-    # Example 1: Navigate to coordinate (300mm, 200mm) with obstacle avoidance
-    print("\n=== Diagonal Navigation with Obstacle Avoidance ===")
-    navigate_diagonal_with_avoidance(robot, x_target=300, y_target=200)
-    time.sleep(2)
-    
-    # Example 2: Navigate to coordinate (400mm, 300mm) rectilinearly with avoidance
-    print("\n=== Rectilinear Navigation with Obstacle Avoidance ===")
-    navigate_rectilinear_with_avoidance(robot, x_target=400, y_target=300, x_current=300, y_current=200)
-    time.sleep(2)
-    
-    # Example 3: Navigate to a cube
-    print("\n=== Navigate to Cube ===")
+    print("\nSearching for cube...")
     robot.set_head_angle(degrees(0)).wait_for_completed()
     cube = None
     look_around = robot.start_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
@@ -191,14 +162,161 @@ def cozmo_program(robot: cozmo.robot.Robot):
         cube = robot.world.wait_for_observed_light_cube(timeout=30)
         print(f"Found cube: {cube}")
     except:
-        print("No cube found")
+        print("No cube found within timeout")
     finally:
         look_around.stop()
     
     if cube:
-        navigate_to_cube(robot, cube)
+        cube_pose = cube.pose
+        dx = cube_pose.position.x
+        dy = cube_pose.position.y
+        print(f"Navigating to cube at ({dx:.2f}, {dy:.2f})")
+        navigate_diagonal_with_avoidance(robot, dx, dy)
+    else:
+        print("Cannot navigate - no cube detected!")
+
+def display_menu():
+    """Display the navigation menu."""
+    print("\n" + "="*50)
+    print("COZMO NAVIGATION WITH OBSTACLE AVOIDANCE")
+    print("="*50)
+    print("1. Diagonal Navigation (direct path)")
+    print("2. Rectilinear Navigation (X then Y)")
+    print("3. Navigate to Cube")
+    print("4. Calibrate Robot")
+    print("5. Exit")
+    print("="*50)
+
+def get_coordinates():
+    """Get target coordinates from user."""
+    try:
+        x = float(input("Enter X coordinate (mm): "))
+        y = float(input("Enter Y coordinate (mm): "))
+        return x, y
+    except ValueError:
+        print("Invalid input! Please enter numbers.")
+        return None, None
+
+def get_current_position():
+    """Get current position from user."""
+    use_current = input("Use current position as (0, 0)? (y/n): ").lower()
+    if use_current == 'y':
+        return 0, 0
+    else:
+        try:
+            x = float(input("Enter current X coordinate (mm): "))
+            y = float(input("Enter current Y coordinate (mm): "))
+            return x, y
+        except ValueError:
+            print("Invalid input! Using (0, 0) as default.")
+            return 0, 0
+
+def cozmo_program(robot: cozmo.robot.Robot):
+    # Enable camera for wall detection
+    robot.camera.image_stream_enabled = True
+    time.sleep(0.5)  # Give camera time to initialize
     
-    print("\n=== Navigation complete! ===")
+    print("\nCamera initialized. Robot ready!")
+    
+    while True:
+        display_menu()
+        
+        try:
+            choice = input("\nEnter your choice (1-5): ")
+            
+            if choice == '1':
+                # Diagonal Navigation
+                print("\n--- DIAGONAL NAVIGATION ---")
+                x_current, y_current = get_current_position()
+                x_target, y_target = get_coordinates()
+                
+                if x_target is not None and y_target is not None:
+                    print(f"\nStarting diagonal navigation to ({x_target}, {y_target})...")
+                    navigate_diagonal_with_avoidance(robot, x_target, y_target, x_current, y_current)
+                    print("Navigation complete!")
+            
+            elif choice == '2':
+                # Rectilinear Navigation
+                print("\n--- RECTILINEAR NAVIGATION ---")
+                x_current, y_current = get_current_position()
+                x_target, y_target = get_coordinates()
+                
+                if x_target is not None and y_target is not None:
+                    print(f"\nStarting rectilinear navigation to ({x_target}, {y_target})...")
+                    navigate_rectilinear_with_avoidance(robot, x_target, y_target, x_current, y_current)
+                    print("Navigation complete!")
+            
+            elif choice == '3':
+                # Navigate to Cube
+                print("\n--- NAVIGATE TO CUBE ---")
+                navigate_to_cube(robot)
+            
+            elif choice == '4':
+                # Calibrate
+                print("\n--- CALIBRATION ---")
+                confirm = input("Start calibration? Robot will move forward. (y/n): ")
+                if confirm.lower() == 'y':
+                    calibrate(robot)
+            
+            elif choice == '5':
+                # Exit
+                print("\nExiting navigation program. Goodbye!")
+                break
+            
+            else:
+                print("Invalid choice! Please enter a number between 1 and 5.")
+        
+        except KeyboardInterrupt:
+            print("\n\nProgram interrupted by user.")
+            break
+        except Exception as e:
+            print(f"\nError occurred: {e}")
+            print("Returning to menu...")
+    
+    # Clean up
+    robot.drive_wheels(0, 0)
+    print("Robot stopped.")
 
 if __name__ == '__main__':
     cozmo.run_program(cozmo_program)
+```
+
+**Key changes:**
+
+1. **Interactive Menu System**: 
+   - Choice 1: Diagonal navigation with custom coordinates
+   - Choice 2: Rectilinear navigation (X then Y) with custom coordinates
+   - Choice 3: Navigate to a detected cube
+   - Choice 4: Run calibration
+   - Choice 5: Exit program
+
+2. **User Input Functions**:
+   - `get_coordinates()`: Get target X, Y from user
+   - `get_current_position()`: Option to use (0,0) or specify current position
+
+3. **90-Degree Turns**: Changed all avoidance turns to 90 degrees:
+   - First tries 90° right
+   - Then tries 180° turn (to face 90° left)
+   - If both blocked, turns another 90°
+
+4. **Loop Structure**: Program keeps running until user chooses to exit
+
+**Usage example:**
+```
+COZMO NAVIGATION WITH OBSTACLE AVOIDANCE
+==================================================
+1. Diagonal Navigation (direct path)
+2. Rectilinear Navigation (X then Y)
+3. Navigate to Cube
+4. Calibrate Robot
+5. Exit
+==================================================
+
+Enter your choice (1-5): 1
+
+--- DIAGONAL NAVIGATION ---
+Use current position as (0, 0)? (y/n): y
+Enter X coordinate (mm): 300
+Enter Y coordinate (mm): 200
+
+Starting diagonal navigation to (300.0, 200.0)...
