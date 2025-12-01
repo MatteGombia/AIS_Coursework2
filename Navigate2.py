@@ -90,7 +90,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT * 2
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
@@ -102,14 +102,14 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
-                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)# * 2
-                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)# * 2
+                    x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                    y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
                     print(f"Moved left to ({x_current:.0f}, {y_current:.0f})")
                 else:
                     print("Both sides blocked!")
             else:
-                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)# * 2
-                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)# * 2
+                x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
+                y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
                 print(f"Moved right to ({x_current:.0f}, {y_current:.0f})")
             
             dx = x_target - x_current
@@ -169,7 +169,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT * 2
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
