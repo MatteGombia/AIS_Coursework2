@@ -45,108 +45,125 @@ def check_for_wall(robot, move_duration):
     
     return False
 
+def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
+    tolerance = 50
+    max_attempts = 40
+    attempts = 0
+    
+    print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
+    
+    while attempts < max_attempts:
+        dx = x_target - x_current
+        dy = y_target - y_current
+        distance = math.hypot(dx, dy)
+        
+        if distance < tolerance:
+            print("Target reached!")
+            return True
+        
+        theta = math.atan2(dy, dx)
+        print(f"Distance to target: {distance:.0f}mm, Angle: {math.degrees(theta):.0f}°")
+        
+        robot.turn_in_place(radians(theta)).wait_for_completed()
+        time.sleep(0.2)
+        
+        move_distance = min(DISTANCE_PER_MOVE, distance)
+        move_duration = move_distance / WHEEL_SPEED
+        
+        wall_hit = check_for_wall(robot, move_duration)
+        
+        if wall_hit:
+            print("Wall hit, going around...")
+            
+            robot.turn_in_place(degrees(90)).wait_for_completed()
+            time.sleep(0.2)
+            
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
+            side_hit = check_for_wall(robot, avoidance_duration)
+            
+            if side_hit:
+                print("Right side blocked, trying left...")
+                robot.turn_in_place(degrees(-180)).wait_for_completed()
+                time.sleep(0.2)
+                
+                left_hit = check_for_wall(robot, avoidance_duration)
+                
+                if not left_hit:
+                    x_current += DISTANCE_PER_MOVE * math.cos(theta - math.pi/2)
+                    y_current += DISTANCE_PER_MOVE * math.sin(theta - math.pi/2)
+            else:
+                x_current += DISTANCE_PER_MOVE * math.cos(theta + math.pi/2)
+                y_current += DISTANCE_PER_MOVE * math.sin(theta + math.pi/2)
+            
+            print(f"New position: ({x_current:.0f}, {y_current:.0f})")
+        else:
+            x_current += move_distance * math.cos(theta)
+            y_current += move_distance * math.sin(theta)
+            print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
+        
+        attempts += 1
+        time.sleep(0.2)
+    
+    print("Could not reach target")
+    return False
+
 def move_straight_with_avoidance(robot, target_distance, target_angle):
     tolerance = 50
     max_attempts = 30
     attempts = 0
     distance_covered = 0
+    x_current = 0
+    y_current = 0
+    x_target = target_distance * math.cos(target_angle)
+    y_target = target_distance * math.sin(target_angle)
     
-    robot.turn_in_place(radians(target_angle)).wait_for_completed()
-    time.sleep(0.2)
-    
-    while attempts < max_attempts and distance_covered < target_distance - tolerance:
-        remaining = target_distance - distance_covered
+    while attempts < max_attempts:
+        dx = x_target - x_current
+        dy = y_target - y_current
+        remaining = math.hypot(dx, dy)
+        
+        if remaining < tolerance:
+            print("Target reached!")
+            return True
+        
+        angle = math.atan2(dy, dx)
+        robot.turn_in_place(radians(angle)).wait_for_completed()
+        time.sleep(0.2)
+        
         move_distance = min(DISTANCE_PER_MOVE, remaining)
         move_duration = move_distance / WHEEL_SPEED
         
         wall_hit = check_for_wall(robot, move_duration)
         
         if wall_hit:
-            print("Wall hit, trying to go around")
+            print("Wall hit, going around...")
             
             robot.turn_in_place(degrees(90)).wait_for_completed()
             time.sleep(0.2)
             
-            test_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
-            test_hit = check_for_wall(robot, test_duration)
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
+            side_hit = check_for_wall(robot, avoidance_duration)
             
-            if test_hit:
+            if side_hit:
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
                 time.sleep(0.2)
-                check_for_wall(robot, test_duration)
-            
-            robot.turn_in_place(radians(target_angle)).wait_for_completed()
-            time.sleep(0.2)
+                left_hit = check_for_wall(robot, avoidance_duration)
+                
+                if not left_hit:
+                    x_current += DISTANCE_PER_MOVE * math.cos(angle - math.pi/2)
+                    y_current += DISTANCE_PER_MOVE * math.sin(angle - math.pi/2)
+            else:
+                x_current += DISTANCE_PER_MOVE * math.cos(angle + math.pi/2)
+                y_current += DISTANCE_PER_MOVE * math.sin(angle + math.pi/2)
         else:
-            distance_covered += move_distance
-            print(f"Moved {distance_covered:.0f}/{target_distance:.0f}mm")
+            x_current += move_distance * math.cos(angle)
+            y_current += move_distance * math.sin(angle)
         
         attempts += 1
         time.sleep(0.2)
     
-    return distance_covered >= target_distance - tolerance
-
-def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
-    tolerance = 50
-    max_attempts = 30
-    attempts = 0
-    
-    print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
-    
-    dx = x_target - x_current
-    dy = y_target - y_current
-    distance = math.hypot(dx, dy)
-    theta = math.atan2(dy, dx)
-    
-    print(f"Total distance: {distance:.0f}mm, Angle: {math.degrees(theta):.0f}°")
-    
-    robot.turn_in_place(radians(theta)).wait_for_completed()
-    time.sleep(0.2)
-    
-    distance_covered = 0
-    
-    while attempts < max_attempts and distance_covered < distance - tolerance:
-        remaining = distance - distance_covered
-        move_distance = min(DISTANCE_PER_MOVE, remaining)
-        move_duration = move_distance / WHEEL_SPEED
-        
-        wall_hit = check_for_wall(robot, move_duration)
-        
-        if wall_hit:
-            print("Wall hit, trying alternate path")
-            
-            robot.turn_in_place(degrees(90)).wait_for_completed()
-            time.sleep(0.2)
-            
-            test_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
-            test_hit = check_for_wall(robot, test_duration)
-            
-            if test_hit:
-                robot.turn_in_place(degrees(-180)).wait_for_completed()
-                time.sleep(0.2)
-                check_for_wall(robot, test_duration)
-            
-            dx = x_target - x_current
-            dy = y_target - y_current
-            theta = math.atan2(dy, dx)
-            robot.turn_in_place(radians(theta)).wait_for_completed()
-            time.sleep(0.2)
-            
-            x_current = robot.pose.position.x
-            y_current = robot.pose.position.y
-        else:
-            distance_covered += move_distance
-            print(f"Moved {distance_covered:.0f}/{distance:.0f}mm")
-        
-        attempts += 1
-        time.sleep(0.2)
-    
-    if distance_covered >= distance - tolerance:
-        print("Target reached!")
-        return True
-    else:
-        print("Could not reach target")
-        return False
+    print("Could not reach target")
+    return False
 
 def navigate_rectilinear(robot, x_target, y_target, x_current=0, y_current=0):
     dx = x_target - x_current
