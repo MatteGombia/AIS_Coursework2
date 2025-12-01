@@ -15,6 +15,7 @@ map = dict()
 path = []
 walls = []
 marked_walls_seen=[]
+walls_angles = []
 cubes = {cozmo.objects.LightCube1Id: [False, None],
          cozmo.objects.LightCube2Id: [False, None],
          cozmo.objects.LightCube3Id: [False, None]}
@@ -22,6 +23,7 @@ start_time = time.time()
 MOVE_DISTANCE = 400  #Distance to move per step
 RANGE_MAP_KEY = 20
 WALL_RADIUS = 100
+RADIUS_CIRCLES = 300
 
 #Setup the plot
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -93,15 +95,20 @@ def draw_map(robot: cozmo.robot.Robot):
         path_xs = [p[0] for p in path]
         path_ys = [p[1] for p in path]
         ax.plot(path_xs, path_ys, 'b-', alpha=0.5)
+    for (x,y) in path:
+        circle = plt.Circle((x, y), RADIUS_CIRCLES, color='g')
+        ax.add_patch(circle)
+
     
     #Draw walls (as points)
-    for wall_x, wall_y in walls:
+    for i in range(len(walls)):
+        wall_x, wall_y = walls[i]
         ax.plot(wall_x, wall_y, 'rs', markersize=10, markeredgecolor='darkred', markeredgewidth=2)
-        perp_angle = robot_angle + math.pi / 2
-        wall_x1 = wall_x - WALL_RADIUS * math.cos(perp_angle)
-        wall_y1 = wall_y - WALL_RADIUS * math.sin(perp_angle)
-        wall_x2 = wall_x + WALL_RADIUS * math.cos(perp_angle)
-        wall_y2 = wall_y + WALL_RADIUS * math.sin(perp_angle)
+
+        wall_x1 = wall_x - WALL_RADIUS * math.cos(walls_angles[i])
+        wall_y1 = wall_y - WALL_RADIUS * math.sin(walls_angles[i])
+        wall_x2 = wall_x + WALL_RADIUS * math.cos(walls_angles[i])
+        wall_y2 = wall_y + WALL_RADIUS * math.sin(walls_angles[i])
         ax.plot([wall_x1, wall_x2], [wall_y1, wall_y2], 'r-', linewidth=3)
     
     #Draw cubes (yellow squares)
@@ -272,6 +279,7 @@ def handle_object_observed(evt, **kw):
             print("Cozmo observed a wall at %s" % str(evt.obj.pose.position))
             print(evt.obj)
             add_wall(evt.obj.pose.position.x, evt.obj.pose.position.y)
+            walls_angles.append(evt.obj.pose.rotation.angle_z.radians)
         
 def explore(robot: cozmo.robot.Robot):
     global path
@@ -306,9 +314,6 @@ def explore(robot: cozmo.robot.Robot):
             
             #Try to move to that position
             reached = go_to_new_position(robot, target[0], target[1])
-            
-            if not reached:
-                print("Couldn't reach target, choosing new position")
             
     except KeyboardInterrupt:
         print("\nStopping")
