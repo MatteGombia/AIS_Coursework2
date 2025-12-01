@@ -46,7 +46,7 @@ def check_for_wall(robot, move_duration):
     
     return False
 
-def normalize_angle(angle):
+def normalise_angle(angle):
     while angle > math.pi:
         angle -= 2 * math.pi
     while angle < -math.pi:
@@ -90,7 +90,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT * 2
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
@@ -116,7 +116,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             dy = y_target - y_current
             target_angle = math.atan2(dy, dx)
             
-            turn_amount = normalize_angle(target_angle - robot_heading)
+            turn_amount = normalise_angle(target_angle - robot_heading)
             
             print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
             robot.turn_in_place(radians(turn_amount)).wait_for_completed()
@@ -169,7 +169,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT * 2
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
@@ -189,7 +189,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             dy = y_target - y_current
             target_angle_new = math.atan2(dy, dx)
             
-            turn_amount = normalize_angle(target_angle_new - robot_heading)
+            turn_amount = normalise_angle(target_angle_new - robot_heading)
             
             print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
             robot.turn_in_place(radians(turn_amount)).wait_for_completed()
