@@ -58,9 +58,6 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     max_attempts = 40
     attempts = 0
     
-    # Initialize tracking
-    reset_navigation_data(x_current, y_current, x_target, y_target)
-    start_time = time.time()
     
     print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
     
@@ -86,10 +83,6 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         
         if distance < tolerance:
             print("Target reached!")
-            navigation_data['success'] = True
-            navigation_data['distance_error'] = distance
-            navigation_data['time_taken'] = time.time() - start_time
-            navigation_data['attempts'] = attempts
             add_position(x_current, y_current)
             return True
         
@@ -173,10 +166,6 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         time.sleep(0.2)
     
     print("\n!!! Could not reach target !!!")
-    navigation_data['success'] = False
-    navigation_data['distance_error'] = distance
-    navigation_data['time_taken'] = time.time() - start_time
-    navigation_data['attempts'] = attempts
     add_position(x_current, y_current)
     return False
 
