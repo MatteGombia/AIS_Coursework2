@@ -49,6 +49,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     tolerance = 50
     max_attempts = 40
     attempts = 0
+    need_to_turn = True
     
     print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
     
@@ -61,11 +62,12 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             print("Target reached!")
             return True
         
-        theta = math.atan2(dy, dx)
-        print(f"Distance to target: {distance:.0f}mm, Angle: {math.degrees(theta):.0f}°")
-        
-        robot.turn_in_place(radians(theta)).wait_for_completed()
-        time.sleep(0.2)
+        if need_to_turn:
+            theta = math.atan2(dy, dx)
+            print(f"Distance to target: {distance:.0f}mm, Angle: {math.degrees(theta):.0f}°")
+            robot.turn_in_place(radians(theta)).wait_for_completed()
+            time.sleep(0.2)
+            need_to_turn = False
         
         move_distance = min(DISTANCE_PER_MOVE, distance)
         move_duration = move_distance / WHEEL_SPEED
@@ -95,11 +97,12 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
                 x_current += DISTANCE_PER_MOVE * math.cos(theta + math.pi/2)
                 y_current += DISTANCE_PER_MOVE * math.sin(theta + math.pi/2)
             
-            print(f"New position: ({x_current:.0f}, {y_current:.0f})")
+            print(f"Avoided obstacle, new position: ({x_current:.0f}, {y_current:.0f})")
+            need_to_turn = True
         else:
             x_current += move_distance * math.cos(theta)
             y_current += move_distance * math.sin(theta)
-            print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
+            print(f"Moved {move_distance:.0f}mm forward")
         
         attempts += 1
         time.sleep(0.2)
@@ -111,11 +114,11 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
     tolerance = 50
     max_attempts = 30
     attempts = 0
-    distance_covered = 0
     x_current = 0
     y_current = 0
     x_target = target_distance * math.cos(target_angle)
     y_target = target_distance * math.sin(target_angle)
+    need_to_turn = True
     
     while attempts < max_attempts:
         dx = x_target - x_current
@@ -126,9 +129,12 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             print("Target reached!")
             return True
         
-        angle = math.atan2(dy, dx)
-        robot.turn_in_place(radians(angle)).wait_for_completed()
-        time.sleep(0.2)
+        if need_to_turn:
+            angle = math.atan2(dy, dx)
+            print(f"Distance remaining: {remaining:.0f}mm")
+            robot.turn_in_place(radians(angle)).wait_for_completed()
+            time.sleep(0.2)
+            need_to_turn = False
         
         move_distance = min(DISTANCE_PER_MOVE, remaining)
         move_duration = move_distance / WHEEL_SPEED
@@ -155,6 +161,8 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             else:
                 x_current += DISTANCE_PER_MOVE * math.cos(angle + math.pi/2)
                 y_current += DISTANCE_PER_MOVE * math.sin(angle + math.pi/2)
+            
+            need_to_turn = True
         else:
             x_current += move_distance * math.cos(angle)
             y_current += move_distance * math.sin(angle)
