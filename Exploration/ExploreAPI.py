@@ -1,6 +1,6 @@
 import cozmo
 import time
-from cozmo.util import degrees, distance_mm, Angle
+from cozmo.util import degrees, distance_mm, Angle, Pose
 from cozmo.objects import LightCube, LightCube1Id, LightCube2Id, LightCube3Id
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +11,6 @@ from cozmo.objects import CustomObject
 #Tracking variables
 robot_x = 0
 robot_y = 0  
-robot_angle = 0
 map = dict()
 path = []
 walls = []
@@ -33,8 +32,8 @@ def add_wall(wall_x, wall_y):
     walls.append((wall_x, wall_y))
 
 
-def draw_map():
-    global ax, robot_x, robot_y, robot_angle
+def draw_map(robot: cozmo.robot.Robot):
+    global ax, robot_x, robot_y
     ax.clear()
     
     #Centre view on robot
@@ -66,6 +65,8 @@ def draw_map():
     ax.plot(robot_x, robot_y, 'go', markersize=10)
     
     #Arrow showing which way the Cozmo is facing
+    robotPose = Frame2D.fromPose(robot.pose)
+    robot_angle = robotPose.angle()
     arrow_len = 80
     arrow_x = robot_x + arrow_len * math.cos(robot_angle)
     arrow_y = robot_y + arrow_len * math.sin(robot_angle)
@@ -93,7 +94,7 @@ def print_stats():
 
 def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
     #Test for exploration
-    robot.go_to_pose(Frame2D.fromXYA(target_x, target_y, 0)).wait_for_completion()
+    robot.go_to_pose(Pose(target_x, target_y, 0)).wait_for_completion()
 
 def scan_for_cubes(robot: cozmo.robot.Robot):
     #Do a 360-degree stepwise scan looking for cubes
@@ -119,14 +120,14 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
                 
                 robot.drive_wheels(0, 0)
                 time.sleep(0.2)
-                draw_map()
+                draw_map(robot)
                 #Continue scanning for other cubes
         
         #Turn to next scan position
         if step < steps - 1:  #Don't turn on the last step
             robot.turn_in_place(degrees(step_angle)).wait_for_completed()
             time.sleep(0.1)
-            draw_map()
+            draw_map(robot)
     
     return False  #Scan complete
 
