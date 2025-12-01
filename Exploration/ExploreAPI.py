@@ -14,6 +14,7 @@ robot_y = 0
 map = dict()
 path = []
 walls = []
+marked_walls_seen=[]
 cubes = {cozmo.objects.LightCube1Id: [False, None],
          cozmo.objects.LightCube2Id: [False, None],
          cozmo.objects.LightCube3Id: [False, None]}
@@ -134,7 +135,7 @@ def print_stats():
 
 def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
     #Test for exploration
-    robot.go_to_pose(Pose(target_x, target_y, 0, degrees(0))).wait_for_completion()
+    robot.go_to_pose(Pose(target_x, target_y, 0, angle_z=degrees(0)))
     time.sleep(10.0)
 
 def scan_for_cubes(robot: cozmo.robot.Robot):
@@ -255,9 +256,11 @@ def handle_object_observed(evt, **kw):
     # This will be called whenever an EvtObjectDisappeared is dispatched -
     # whenever an Object goes out of view.
     if isinstance(evt.obj, CustomObject):
-        print("Cozmo observed a %s" % str(evt.obj.object_type))
-        print(evt.obj)
-        add_wall(evt.obj.x(), evt.obj.y())
+        if evt.obj not in marked_walls_seen:
+            marked_walls_seen.append(evt.obj)
+            print("Cozmo observed a %s" % str(evt.obj.object_type))
+            print(evt.obj)
+            add_wall(evt.obj.pose.position, evt.obj.pose.position.y)
         
 def explore(robot: cozmo.robot.Robot):
     global path
@@ -305,6 +308,7 @@ def explore(robot: cozmo.robot.Robot):
         plt.show()
 
 def main(robot: cozmo.robot.Robot):
+    create_cozmo_walls(robot)
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
     time.sleep(1)
     robot.set_head_angle(Angle(0)).wait_for_completed
