@@ -58,6 +58,10 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     max_attempts = 40
     attempts = 0
     
+    # Initialize tracking
+    reset_navigation_data(x_current, y_current, x_target, y_target)
+    start_time = time.time()
+    
     print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
     
     dx = x_target - x_current
@@ -70,68 +74,110 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
     time.sleep(0.2)
     
     while attempts < max_attempts:
+        print(f"\n--- Attempt {attempts + 1} ---")
+        print(f"Current position: ({x_current:.0f}, {y_current:.0f})")
+        print(f"Current heading: {math.degrees(robot_heading):.0f}°")
+        
         dx = x_target - x_current
         dy = y_target - y_current
         distance = math.hypot(dx, dy)
         
+        print(f"Distance to target: {distance:.0f}mm")
+        
         if distance < tolerance:
             print("Target reached!")
+            navigation_data['success'] = True
+            navigation_data['distance_error'] = distance
+            navigation_data['time_taken'] = time.time() - start_time
+            navigation_data['attempts'] = attempts
+            add_position(x_current, y_current)
             return True
         
         move_distance = min(DISTANCE_PER_MOVE, distance)
         move_duration = move_distance / WHEEL_SPEED * CALIBRATED_CONSTANT
         
+        print(f"Checking for wall ahead...")
         wall_hit = check_for_wall(robot, move_duration)
         
         if wall_hit:
-            print("Wall hit, attempting to go around")
+            print(f">>> WALL HIT at attempt {attempts + 1} <<<")
+            add_wall_detection(x_current, y_current)
             
+            # Turn right 90°
+            print("Turning right 90°")
             robot.turn_in_place(degrees(90)).wait_for_completed()
             robot_heading += math.pi/2
+            robot_heading = normalise_angle(robot_heading)  # Keep angle in range
+            print(f"New heading after right turn: {math.degrees(robot_heading):.0f}°")
             time.sleep(0.2)
             
+            # Check right side
             avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
+            print("Checking right side...")
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
-                print("Right side blocked, trying left")
+                print("Right side blocked, turning left 180°")
+                add_wall_detection(x_current, y_current)
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
                 robot_heading -= math.pi
+                robot_heading = normalise_angle(robot_heading)
+                print(f"New heading after left turn: {math.degrees(robot_heading):.0f}°")
                 time.sleep(0.2)
                 
+                # Check left side
+                print("Checking left side...")
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
+                    print("Left side clear, moving")
                     x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
                     y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
+                    add_position(x_current, y_current)
                     print(f"Moved left to ({x_current:.0f}, {y_current:.0f})")
                 else:
-                    print("Both sides blocked!")
+                    add_wall_detection(x_current, y_current)
+                    print("Both sides blocked! Staying in place")
             else:
+                print("Right side clear, moving")
                 x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
                 y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
+                add_position(x_current, y_current)
                 print(f"Moved right to ({x_current:.0f}, {y_current:.0f})")
             
+            # REORIENT TOWARDS TARGET
             dx = x_target - x_current
             dy = y_target - y_current
             target_angle = math.atan2(dy, dx)
             
             turn_amount = normalise_angle(target_angle - robot_heading)
             
-            print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
+            print(f">>> REORIENTING <<<")
+            print(f"Target angle: {math.degrees(target_angle):.0f}°")
+            print(f"Current heading: {math.degrees(robot_heading):.0f}°")
+            print(f"Turn amount: {math.degrees(turn_amount):.0f}°")
+            
             robot.turn_in_place(radians(turn_amount)).wait_for_completed()
             robot_heading = target_angle
+            print(f"New heading after reorientation: {math.degrees(robot_heading):.0f}°")
             time.sleep(0.2)
             
         else:
+            print("No wall detected, moving forward")
             x_current += move_distance * math.cos(robot_heading)
             y_current += move_distance * math.sin(robot_heading)
+            add_position(x_current, y_current)
             print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
         
         attempts += 1
         time.sleep(0.2)
     
-    print("Could not reach target")
+    print("\n!!! Could not reach target !!!")
+    navigation_data['success'] = False
+    navigation_data['distance_error'] = distance
+    navigation_data['time_taken'] = time.time() - start_time
+    navigation_data['attempts'] = attempts
+    add_position(x_current, y_current)
     return False
 
 def move_straight_with_avoidance(robot, target_distance, target_angle):
@@ -160,35 +206,49 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
         move_distance = min(DISTANCE_PER_MOVE, remaining)
         move_duration = move_distance / WHEEL_SPEED * CALIBRATED_CONSTANT
         
+        # CHECK for wall WITHOUT moving
         wall_hit = check_for_wall(robot, move_duration)
         
         if wall_hit:
-            print("Wall hit, going around")
+            add_wall_detection(x_current, y_current)
+            print(f"Wall detected at attempt {attempts}, avoiding...")
             
+            # Turn right 90°
             robot.turn_in_place(degrees(90)).wait_for_completed()
             robot_heading += math.pi/2
             time.sleep(0.2)
             
+            # Check side
             avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
+                # Turn left 180° (now facing left from original obstacle)
+                add_wall_detection(x_current, y_current)
                 robot.turn_in_place(degrees(-180)).wait_for_completed()
                 robot_heading -= math.pi
                 time.sleep(0.2)
+                
+                # Try left side
                 left_hit = check_for_wall(robot, avoidance_duration)
                 
                 if not left_hit:
+                    # Move left successfully
                     x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
                     y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
+                    add_position(x_current, y_current)
+                else:
+                    print("Completely blocked, staying in place")
             else:
+                # Move right successfully
                 x_current += DISTANCE_PER_MOVE * math.cos(robot_heading)
                 y_current += DISTANCE_PER_MOVE * math.sin(robot_heading)
+                add_position(x_current, y_current)
             
+            # ALWAYS reorient after avoidance
             dx = x_target - x_current
             dy = y_target - y_current
             target_angle_new = math.atan2(dy, dx)
-            
             turn_amount = normalise_angle(target_angle_new - robot_heading)
             
             print(f"Reorienting: turning {math.degrees(turn_amount):.0f}° towards target")
@@ -197,8 +257,10 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             time.sleep(0.2)
             
         else:
+            # No wall detected - move forward
             x_current += move_distance * math.cos(robot_heading)
             y_current += move_distance * math.sin(robot_heading)
+            add_position(x_current, y_current)
         
         attempts += 1
         time.sleep(0.2)
