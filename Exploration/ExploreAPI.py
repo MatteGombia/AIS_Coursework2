@@ -93,7 +93,7 @@ def print_stats():
 
 def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
     #Test for exploration
-    robot.go_to_pose((target_x, target_y)).wait_for_completion()
+    robot.go_to_pose(Frame2D.fromXYA(target_x, target_y, 0)).wait_for_completion()
 
 def scan_for_cubes(robot: cozmo.robot.Robot):
     #Do a 360-degree stepwise scan looking for cubes
@@ -160,9 +160,6 @@ def is_path_blocked(start_f: Frame2D, end_f, obstacles_list, clearance_mm=50.0):
     sx, sy = start_f.x(), start_f.y()
     ex, ey = end_f[0], end_f[1]
     for obs in obstacles_list:
-        # some observed objects may not yet have a pose
-        if not hasattr(obs, 'pose') or obs.pose is None:
-            continue
         try:
             ox, oy = obs[0], obs[1]
         except Exception:
