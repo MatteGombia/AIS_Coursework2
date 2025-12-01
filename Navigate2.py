@@ -95,3 +95,225 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
                 
                 if not left_hit:
                     x_current += DISTANCE_PER_MOVE * math.cos(current_angle - math.pi/2)
+                    y_current += DISTANCE_PER_MOVE * math.sin(current_angle - math.pi/2)
+                    print(f"Moved left to ({x_current:.0f}, {y_current:.0f})")
+                else:
+                    print("Both sides blocked!")
+            else:
+                x_current += DISTANCE_PER_MOVE * math.cos(current_angle + math.pi/2)
+                y_current += DISTANCE_PER_MOVE * math.sin(current_angle + math.pi/2)
+                print(f"Moved right to ({x_current:.0f}, {y_current:.0f})")
+            
+            dx = x_target - x_current
+            dy = y_target - y_current
+            new_theta = math.atan2(dy, dx)
+            new_distance = math.hypot(dx, dy)
+            
+            print(f"Reorienting: Distance {new_distance:.0f}mm, Angle {math.degrees(new_theta):.0f}°")
+            robot.turn_in_place(radians(new_theta)).wait_for_completed()
+            time.sleep(0.2)
+            
+        else:
+            current_angle = math.atan2(dy, dx)
+            x_current += move_distance * math.cos(current_angle)
+            y_current += move_distance * math.sin(current_angle)
+            print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
+        
+        attempts += 1
+        time.sleep(0.2)
+    
+    print("Could not reach target")
+    return False
+
+def move_straight_with_avoidance(robot, target_distance, target_angle):
+    tolerance = 50
+    max_attempts = 30
+    attempts = 0
+    x_current = 0
+    y_current = 0
+    x_target = target_distance * math.cos(target_angle)
+    y_target = target_distance * math.sin(target_angle)
+    
+    print(f"Moving {target_distance:.0f}mm at {math.degrees(target_angle):.0f}°")
+    robot.turn_in_place(radians(target_angle)).wait_for_completed()
+    time.sleep(0.2)
+    
+    while attempts < max_attempts:
+        dx = x_target - x_current
+        dy = y_target - y_current
+        remaining = math.hypot(dx, dy)
+        
+        if remaining < tolerance:
+            print("Target reached!")
+            return True
+        
+        move_distance = min(DISTANCE_PER_MOVE, remaining)
+        move_duration = move_distance / WHEEL_SPEED
+        
+        wall_hit = check_for_wall(robot, move_duration)
+        
+        if wall_hit:
+            print("Wall hit, going around...")
+            
+            current_angle = math.atan2(dy, dx)
+            
+            robot.turn_in_place(degrees(90)).wait_for_completed()
+            time.sleep(0.2)
+            
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
+            side_hit = check_for_wall(robot, avoidance_duration)
+            
+            if side_hit:
+                robot.turn_in_place(degrees(-180)).wait_for_completed()
+                time.sleep(0.2)
+                left_hit = check_for_wall(robot, avoidance_duration)
+                
+                if not left_hit:
+                    x_current += DISTANCE_PER_MOVE * math.cos(current_angle - math.pi/2)
+                    y_current += DISTANCE_PER_MOVE * math.sin(current_angle - math.pi/2)
+            else:
+                x_current += DISTANCE_PER_MOVE * math.cos(current_angle + math.pi/2)
+                y_current += DISTANCE_PER_MOVE * math.sin(current_angle + math.pi/2)
+            
+            dx = x_target - x_current
+            dy = y_target - y_current
+            new_angle = math.atan2(dy, dx)
+            
+            print(f"Reorienting toward target at {math.degrees(new_angle):.0f}°")
+            robot.turn_in_place(radians(new_angle)).wait_for_completed()
+            time.sleep(0.2)
+            
+        else:
+            current_angle = math.atan2(dy, dx)
+            x_current += move_distance * math.cos(current_angle)
+            y_current += move_distance * math.sin(current_angle)
+        
+        attempts += 1
+        time.sleep(0.2)
+    
+    print("Could not reach target")
+    return False
+
+def navigate_rectilinear(robot, x_target, y_target, x_current=0, y_current=0):
+    dx = x_target - x_current
+    dy = y_target - y_current
+    
+    if abs(dx) > 50:
+        print(f"Moving along X-axis: {dx:.0f}mm")
+        angle = 0 if dx > 0 else math.pi
+        move_straight_with_avoidance(robot, abs(dx), angle)
+        time.sleep(0.5)
+    
+    if abs(dy) > 50:
+        print(f"Moving along Y-axis: {dy:.0f}mm")
+        angle = math.pi/2 if dy > 0 else -math.pi/2
+        move_straight_with_avoidance(robot, abs(dy), angle)
+
+def navigate_to_cube(robot):
+    print("Searching for cube...")
+    robot.set_head_angle(degrees(0)).wait_for_completed()
+    
+    look_around = robot.start_behavior(cozmo.behavior.BehaviorTypes.LookAroundInPlace)
+    cube = None
+    
+    try:
+        cube = robot.world.wait_for_observed_light_cube(timeout=30)
+        print(f"Found cube!")
+    except:
+        print("No cube found")
+    finally:
+        look_around.stop()
+    
+    if cube:
+        dx = cube.pose.position.x
+        dy = cube.pose.position.y
+        print(f"Cube at ({dx:.0f}, {dy:.0f})")
+        navigate_with_avoidance(robot, dx, dy)
+    else:
+        print("Cannot navigate without cube")
+
+def show_menu():
+    print("\n" + "="*50)
+    print("COZMO NAVIGATION")
+    print("="*50)
+    print("1. Diagonal Navigation")
+    print("2. Rectilinear Navigation")
+    print("3. Navigate to Cube")
+    print("4. Calibrate")
+    print("5. Exit")
+    print("="*50)
+
+def get_coords():
+    try:
+        x = float(input("X coordinate (mm): "))
+        y = float(input("Y coordinate (mm): "))
+        return x, y
+    except ValueError:
+        print("Invalid input")
+        return None, None
+
+def get_current_pos():
+    use_origin = input("Use (0,0) as current position? (y/n): ").lower()
+    if use_origin == 'y':
+        return 0, 0
+    
+    try:
+        x = float(input("Current X (mm): "))
+        y = float(input("Current Y (mm): "))
+        return x, y
+    except ValueError:
+        print("Using (0,0)")
+        return 0, 0
+
+def cozmo_program(robot: cozmo.robot.Robot):
+    robot.camera.image_stream_enabled = True
+    time.sleep(0.5)
+    print("Robot ready!")
+    
+    while True:
+        show_menu()
+        choice = input("\nChoice (1-5): ")
+        
+        try:
+            if choice == '1':
+                print("\nDIAGONAL NAVIGATION")
+                x_curr, y_curr = get_current_pos()
+                x_targ, y_targ = get_coords()
+                
+                if x_targ is not None:
+                    navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
+            
+            elif choice == '2':
+                print("\nRECTILINEAR NAVIGATION")
+                x_curr, y_curr = get_current_pos()
+                x_targ, y_targ = get_coords()
+                
+                if x_targ is not None:
+                    navigate_rectilinear(robot, x_targ, y_targ, x_curr, y_curr)
+            
+            elif choice == '3':
+                print("\nNAVIGATE TO CUBE")
+                navigate_to_cube(robot)
+            
+            elif choice == '4':
+                print("\nCALIBRATION")
+                if input("Start? (y/n): ").lower() == 'y':
+                    calibrate(robot)
+            
+            elif choice == '5':
+                print("\nGoodbye!")
+                break
+            
+            else:
+                print("Invalid choice")
+        
+        except KeyboardInterrupt:
+            print("\nInterrupted")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    robot.drive_wheels(0, 0)
+
+if __name__ == '__main__':
+    cozmo.run_program(cozmo_program)
