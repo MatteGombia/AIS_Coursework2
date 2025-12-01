@@ -82,8 +82,8 @@ def draw_map(robot: cozmo.robot.Robot):
     robot_angle = robotPose.angle()
     
     #Centre view on robot
-    ax.set_xlim(robotPose.x() - 600, robotPose.x() + 600)
-    ax.set_ylim(robotPose.y() - 600, robotPose.y() + 600)
+    ax.set_xlim(robotPose.x() - 1000, robotPose.x() + 1000)
+    ax.set_ylim(robotPose.y() - 1000, robotPose.y() + 1000)
     ax.set_aspect('equal')
     ax.grid(True, alpha=0.3)
     
@@ -122,7 +122,7 @@ def draw_map(robot: cozmo.robot.Robot):
     ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {count_cubes}')
 
     #Draw Cozmo
-    ax.plot(robotPose.x(), robotPose.y(), 'go', markersize=10)
+    ax.plot(robotPose.x(), robotPose.y(), 'bo', markersize=10)
     
     #Arrow showing which way the Cozmo is facing
     
@@ -130,7 +130,7 @@ def draw_map(robot: cozmo.robot.Robot):
     arrow_x = robotPose.x() + arrow_len * math.cos(robot_angle)
     arrow_y = robotPose.y() + arrow_len * math.sin(robot_angle)
     ax.arrow(robotPose.x(), robotPose.y(), arrow_x - robotPose.x(), arrow_y - robotPose.y(), 
-             head_width=30, head_length=30, fc='green', ec='green')
+             head_width=30, head_length=30, fc='blue', ec='blue')
     
     plt.draw()
     plt.pause(0.01)
@@ -279,7 +279,7 @@ def handle_object_observed(evt, **kw):
             print("Cozmo observed a wall at %s" % str(evt.obj.pose.position))
             print(evt.obj)
             add_wall(evt.obj.pose.position.x, evt.obj.pose.position.y)
-            walls_angles.append(evt.obj.pose.rotation.angle_z.radians)
+            walls_angles.append(evt.obj.pose.rotation.angle_z.radians + math.pi/2)
         
 def explore(robot: cozmo.robot.Robot):
     global path
