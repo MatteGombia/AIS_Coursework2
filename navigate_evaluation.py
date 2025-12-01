@@ -46,6 +46,13 @@ def add_wall_detection(x, y):
     """Mark where a wall was detected"""
     navigation_data['walls_detected'].append((x, y))
 
+def normalise_angle(angle):
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
 def plot_navigation_results():
     """Create visualization of navigation results"""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
