@@ -158,7 +158,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             return True
         
         move_distance = min(DISTANCE_PER_MOVE, remaining)
-        move_duration = move_distance / WHEEL_SPEED
+        move_duration = move_distance / WHEEL_SPEED * CALIBRATED_CONSTANT
         
         wall_hit = check_for_wall(robot, move_duration)
         
@@ -169,7 +169,7 @@ def move_straight_with_avoidance(robot, target_distance, target_angle):
             robot_heading += math.pi/2
             time.sleep(0.2)
             
-            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED
+            avoidance_duration = DISTANCE_PER_MOVE / WHEEL_SPEED * CALIBRATED_CONSTANT
             side_hit = check_for_wall(robot, avoidance_duration)
             
             if side_hit:
