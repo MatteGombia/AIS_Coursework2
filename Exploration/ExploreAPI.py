@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 from frame2d import Frame2D
-from cozmo.objects import CustomObject
+from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
 
 #Tracking variables
 robot_x = 0
@@ -26,19 +26,59 @@ fig, ax = plt.subplots(figsize=(10, 10))
 plt.ion()
 plt.show()
     
+def create_cozmo_walls(robot: cozmo.robot.Robot):
+    types = [CustomObjectTypes.CustomType01,
+             CustomObjectTypes.CustomType02,
+             CustomObjectTypes.CustomType03,
+             CustomObjectTypes.CustomType04,
+             CustomObjectTypes.CustomType05,
+             CustomObjectTypes.CustomType06,
+             CustomObjectTypes.CustomType07,
+             CustomObjectTypes.CustomType08,
+             CustomObjectTypes.CustomType09,
+             CustomObjectTypes.CustomType10,
+             CustomObjectTypes.CustomType11,
+             CustomObjectTypes.CustomType12,
+             CustomObjectTypes.CustomType13,
+             CustomObjectTypes.CustomType14,
+             CustomObjectTypes.CustomType15,
+             CustomObjectTypes.CustomType16]
+    markers = [CustomObjectMarkers.Circles2,
+             CustomObjectMarkers.Diamonds2,
+             CustomObjectMarkers.Hexagons2,
+             CustomObjectMarkers.Triangles2,
+             CustomObjectMarkers.Circles3,
+             CustomObjectMarkers.Diamonds3,
+             CustomObjectMarkers.Hexagons3,
+             CustomObjectMarkers.Triangles3,
+             CustomObjectMarkers.Circles4,
+             CustomObjectMarkers.Diamonds4,
+             CustomObjectMarkers.Hexagons4,
+             CustomObjectMarkers.Triangles4,
+             CustomObjectMarkers.Circles5,
+             CustomObjectMarkers.Diamonds5,
+             CustomObjectMarkers.Hexagons5,
+             CustomObjectMarkers.Triangles5]
+    cozmo_walls = []
+    for i in range(0,8):
+        cozmo_walls.append(robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True))
     
+    for i in range(8,16):
+        cozmo_walls.append(robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True))
 
 def add_wall(wall_x, wall_y):
     walls.append((wall_x, wall_y))
 
 
 def draw_map(robot: cozmo.robot.Robot):
-    global ax, robot_x, robot_y
+    global ax
     ax.clear()
+
+    robotPose = Frame2D.fromPose(robot.pose)
     
     #Centre view on robot
-    ax.set_xlim(robot_x - 600, robot_x + 600)
-    ax.set_ylim(robot_y - 600, robot_y + 600)
+    ax.set_xlim(robotPose.x() - 600, robotPose.x() + 600)
+    ax.set_ylim(robotPose.y() - 600, robotPose.y() + 600)
     ax.set_aspect('equal')
     ax.grid(True, alpha=0.3)
     
@@ -62,15 +102,15 @@ def draw_map(robot: cozmo.robot.Robot):
             ax.plot(cubes[cubeID][1].x(), cubes[cubeID][1].y(), 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
     
     #Draw Cozmo
-    ax.plot(robot_x, robot_y, 'go', markersize=10)
+    ax.plot(robotPose.x(), robotPose.y(), 'go', markersize=10)
     
     #Arrow showing which way the Cozmo is facing
-    robotPose = Frame2D.fromPose(robot.pose)
+    
     robot_angle = robotPose.angle()
     arrow_len = 80
-    arrow_x = robot_x + arrow_len * math.cos(robot_angle)
-    arrow_y = robot_y + arrow_len * math.sin(robot_angle)
-    ax.arrow(robot_x, robot_y, arrow_x - robot_x, arrow_y - robot_y, 
+    arrow_x = robotPose.x() + arrow_len * math.cos(robot_angle)
+    arrow_y = robotPose.y() + arrow_len * math.sin(robot_angle)
+    ax.arrow(robotPose.x(), robotPose.y(), arrow_x - robotPose.x(), arrow_y - robotPose.y(), 
              head_width=30, head_length=30, fc='green', ec='green')
     
     plt.draw()
@@ -94,7 +134,8 @@ def print_stats():
 
 def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
     #Test for exploration
-    robot.go_to_pose(Pose(target_x, target_y, 0)).wait_for_completion()
+    robot.go_to_pose(Pose(target_x, target_y, 0, degrees(0))).wait_for_completion()
+    time.sleep(10.0)
 
 def scan_for_cubes(robot: cozmo.robot.Robot):
     #Do a 360-degree stepwise scan looking for cubes
