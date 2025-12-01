@@ -21,6 +21,7 @@ cubes = {cozmo.objects.LightCube1Id: [False, None],
 start_time = time.time()
 MOVE_DISTANCE = 400  #Distance to move per step
 RANGE_MAP_KEY = 20
+WALL_RADIUS = 100
 
 #Setup the plot
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -76,6 +77,7 @@ def draw_map(robot: cozmo.robot.Robot):
     ax.clear()
 
     robotPose = Frame2D.fromPose(robot.pose)
+    robot_angle = robotPose.angle()
     
     #Centre view on robot
     ax.set_xlim(robotPose.x() - 600, robotPose.x() + 600)
@@ -95,19 +97,28 @@ def draw_map(robot: cozmo.robot.Robot):
     #Draw walls (as points)
     for wall_x, wall_y in walls:
         ax.plot(wall_x, wall_y, 'rs', markersize=10, markeredgecolor='darkred', markeredgewidth=2)
+        perp_angle = robot_angle + math.pi / 2
+        wall_x1 = wall_x - WALL_RADIUS * math.cos(perp_angle)
+        wall_y1 = wall_y - WALL_RADIUS * math.sin(perp_angle)
+        wall_x2 = wall_x + WALL_RADIUS * math.cos(perp_angle)
+        wall_y2 = wall_y + WALL_RADIUS * math.sin(perp_angle)
+        ax.plot([wall_x1, wall_x2], [wall_y1, wall_y2], 'r-', linewidth=3)
     
     #Draw cubes (yellow squares)
+    count_cubes = 0
     cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
     for cubeID in cubeIDs: 
         if cubes[cubeID][0] == True:
+            count_cubes += 1
             ax.plot(cubes[cubeID][1].x(), cubes[cubeID][1].y(), 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
     
+    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {count_cubes}')
+
     #Draw Cozmo
     ax.plot(robotPose.x(), robotPose.y(), 'go', markersize=10)
     
     #Arrow showing which way the Cozmo is facing
     
-    robot_angle = robotPose.angle()
     arrow_len = 80
     arrow_x = robotPose.x() + arrow_len * math.cos(robot_angle)
     arrow_y = robotPose.y() + arrow_len * math.sin(robot_angle)
@@ -233,7 +244,7 @@ def add_reachable_position_to_map(robot: cozmo.robot.Robot):
         (robotPose.x(), robotPose.y() - MOVE_DISTANCE)
     ]
     for position in possible_map_positions:
-        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=210.0)
+        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=WALL_RADIUS)
         if blocked:
             print("Path to position %s is BLOCKED by an obstacle." % str(position))
             possible_map_positions.remove(position)
