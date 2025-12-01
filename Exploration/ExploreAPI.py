@@ -233,9 +233,9 @@ def add_reachable_position_to_map(robot: cozmo.robot.Robot):
         (robotPose.x(), robotPose.y() - MOVE_DISTANCE)
     ]
     for position in possible_map_positions:
-        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=80.0)
+        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=210.0)
         if blocked:
-            print("Path to position %s is blocked by an obstacle." % str(position))
+            print("Path to position %s is BLOCKED by an obstacle." % str(position))
             possible_map_positions.remove(position)
 
     return possible_map_positions
@@ -258,13 +258,12 @@ def handle_object_observed(evt, **kw):
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
             marked_walls_seen.append(evt.obj)
-            print("Cozmo observed a %s" % str(evt.obj.object_type))
+            print("Cozmo observed a wall at %s" % str(evt.obj.pose.position))
             print(evt.obj)
-            add_wall(evt.obj.pose.position, evt.obj.pose.position.y)
+            add_wall(evt.obj.pose.position.x, evt.obj.pose.position.y)
         
 def explore(robot: cozmo.robot.Robot):
     global path
-    
 
     robot.camera.image_stream_enabled = True
     robot.set_lift_height(0.0).wait_for_completed()
@@ -274,8 +273,9 @@ def explore(robot: cozmo.robot.Robot):
     try:
         while True:
             #Do a 360 degree scan for cubes at current position
-            robot.drive_wheels(0, 0)
-            time.sleep(0.2)
+            robotPose = Frame2D.fromPose(robot.pose)
+            path.append((robotPose.x(), robotPose.y()))
+
             scan_for_cubes(robot)
             
             #Small pause between navigation cycles
