@@ -6,15 +6,12 @@ from statistics import mean
 from cozmo.util import degrees, Angle
 from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
 
-# ===== GLOBALS (same as working exploration code) =====
 walls = []
 marked_walls_seen = []
 walls_angles = []
 
 
-# ===== WALL CREATION - EXACT COPY FROM WORKING CODE =====
 def create_cozmo_walls(robot: cozmo.robot.Robot):
-    """This is the EXACT wall creation method from your working exploration code."""
     types = [CustomObjectTypes.CustomType01,
              CustomObjectTypes.CustomType02,
              CustomObjectTypes.CustomType03,
@@ -53,13 +50,11 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
     
     print("Creating custom walls (synchronous method)...")
     
-    # First 8: width 200mm
     for i in range(0, 8):
         wall = robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True)
         cozmo_walls.append(wall)
         print(f"  Defined wall {i+1}: {types[i]}")
     
-    # Next 8: width 300mm
     for i in range(8, 16):
         wall = robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True)
         cozmo_walls.append(wall)
@@ -73,14 +68,9 @@ def add_wall(wall_x, wall_y):
     walls.append((wall_x, wall_y))
 
 
-# ===== EVENT HANDLER - EXACT COPY FROM WORKING CODE =====
 def handle_object_observed(evt, **kw):
-    """
-    This is the EXACT event handler from your working exploration code.
-    """
     global walls, marked_walls_seen, walls_angles
     
-    # Debug: print all objects
     print(f"[OBJECT SEEN] Type: {type(evt.obj).__name__}", end="")
     if hasattr(evt.obj, 'object_type'):
         print(f" - {evt.obj.object_type}")
@@ -97,8 +87,7 @@ def handle_object_observed(evt, **kw):
             walls_angles.append(evt.obj.pose.rotation.angle_z.radians + math.pi / 2)
 
 
-# ===== TRIANGULATION FUNCTIONS =====
-def normalize_angle(angle):
+def normalise_angle(angle):
     while angle > math.pi:
         angle -= 2 * math.pi
     while angle < -math.pi:
@@ -142,8 +131,8 @@ def choose_correct_position(c1, c2, posA, posB, bearing1, bearing2):
         pred_b1 = math.atan2(c1[1] - yr, c1[0] - xr)
         pred_b2 = math.atan2(c2[1] - yr, c2[0] - xr)
 
-        err1 = normalize_angle(pred_b1 - bearing1)
-        err2 = normalize_angle(pred_b2 - bearing2)
+        err1 = normalise_angle(pred_b1 - bearing1)
+        err2 = normalise_angle(pred_b2 - bearing2)
         return abs(err1) + abs(err2)
 
     errA = bearing_error(posA)
@@ -152,7 +141,7 @@ def choose_correct_position(c1, c2, posA, posB, bearing1, bearing2):
     return posA if errA < errB else posB
 
 
-def localize_robot(c1, c2, d1, d2, b1, b2):
+def localise_robot(c1, c2, d1, d2, b1, b2):
     posA, posB = triangulate_from_two_markers(c1, c2, d1, d2)
     xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
     heading = (b1 + b2) / 2.0
@@ -167,12 +156,11 @@ def get_marker_measurements(robot, marker_obj):
     global_bearing = math.atan2(dy, dx)
     robot_heading = robot.pose.rotation.angle_z.radians
 
-    rel_bearing = normalize_angle(global_bearing - robot_heading)
+    rel_bearing = normalise_angle(global_bearing - robot_heading)
     return dist, rel_bearing
 
 
 def average_measurements(robot, marker_obj, n=5):
-    """Non-async version for consistency with synchronous approach."""
     dists = []
     bears = []
     for _ in range(n):
@@ -181,23 +169,18 @@ def average_measurements(robot, marker_obj, n=5):
         bears.append(b)
         time.sleep(0.05)
     avg_d = mean(dists)
-    avg_b = normalize_angle(mean(bears))
+    avg_b = normalise_angle(mean(bears))
     return avg_d, avg_b
 
 
-# ===== WALL SCANNING - ADAPTED FROM WORKING CODE =====
 def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
-    """
-    Scan for walls using the same pattern as your working exploration code.
-    """
     global marked_walls_seen, walls, walls_angles
     
-    # Clear previous detections
     marked_walls_seen.clear()
     walls.clear()
     walls_angles.clear()
     
-    steps = 18  # 18 steps * 20 degrees = 360 degrees
+    steps = 18
     step_angle = 20
     
     print("\n" + "="*70)
@@ -213,10 +196,9 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
         
         print(f"Step {step+1}/{steps} - Walls found: {len(marked_walls_seen)}")
         
-        # Turn to next position
         if step < steps - 1:
             robot.turn_in_place(degrees(step_angle)).wait_for_completed()
-            time.sleep(0.3)  # Wait for vision processing
+            time.sleep(0.3)
     
     print("\n" + "="*70)
     print(f"SCAN COMPLETE - Found {len(marked_walls_seen)} walls")
@@ -225,36 +207,28 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     return len(marked_walls_seen) >= num_needed
 
 
-# ===== MAIN PROGRAM - USING SAME PATTERN AS WORKING CODE =====
 def main(robot: cozmo.robot.Robot):
     print("\n" + "="*70)
-    print("COZMO TRIANGULATION LOCALIZATION")
+    print("COZMO TRIANGULATION LOCALISATION")
     print("Using wall detection method from working exploration code")
     print("="*70 + "\n")
     
-    # Step 1: Enable camera (same as working code)
     robot.camera.image_stream_enabled = True
     print("✓ Camera enabled")
     
-    # Step 2: Create walls (EXACT same way as working code)
     create_cozmo_walls(robot)
     
-    # Step 3: Add event handler (EXACT same way as working code)
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
     print("✓ Event handler registered")
     
-    # Step 4: Wait (same as working code)
-    print("✓ Waiting for initialization...")
+    print("✓ Waiting for initialisation...")
     time.sleep(1)
     
-    # Step 5: Set head angle (same as working code)
     robot.set_head_angle(Angle(0)).wait_for_completed()
     print("✓ Head angle set")
     
-    # Step 6: Another wait (same as working code)
     time.sleep(1)
     
-    # Step 7: Scan for walls
     success = scan_for_walls(robot, num_needed=2)
     
     if not success or len(marked_walls_seen) < 2:
@@ -268,7 +242,6 @@ def main(robot: cozmo.robot.Robot):
                 print(f"  {i+1}. {wall.object_type} at {wall.pose.position}")
         return
     
-    # Step 8: Perform triangulation
     print("\n" + "="*70)
     print("PERFORMING TRIANGULATION")
     print("="*70)
@@ -290,12 +263,11 @@ def main(robot: cozmo.robot.Robot):
     print(f"  Wall 2: dist={d2:.1f}mm, bearing={math.degrees(b2):.1f}°")
     
     try:
-        xr, yr, heading = localize_robot(c1, c2, d1, d2, b1, b2)
+        xr, yr, heading = localise_robot(c1, c2, d1, d2, b1, b2)
     except ValueError as e:
         print(f"\n❌ Triangulation error: {e}")
         return
     
-    # Display results
     print("\n" + "="*70)
     print("TRIANGULATION RESULTS")
     print("="*70)
