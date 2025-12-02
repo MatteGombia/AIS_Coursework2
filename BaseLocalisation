@@ -354,8 +354,7 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
 
 def main(robot: cozmo.robot.Robot):
     print("\n" + "="*70)
-    print("COZMO SATELLITE-STYLE TRIANGULATION LOCALIZATION")
-    print("Using FIXED wall positions for true triangulation")
+    print("Triangulation Localisation With Fixed Markers")
     print("="*70)
     print(f"\nFixed Wall Positions:")
     for wall_key, pos in WALL_POSITIONS.items():
@@ -443,7 +442,7 @@ def main(robot: cozmo.robot.Robot):
     error_heading = abs(normalise_angle(heading - robot.pose.rotation.angle_z.radians))
     
     print("\n" + "="*70)
-    print("LOCALIZATION ERROR")
+    print("LOCALISATION ERROR")
     print("="*70)
     print(f"Position error: {error_dist:.1f} mm")
     print(f"  X error: {error_x:.1f} mm")
