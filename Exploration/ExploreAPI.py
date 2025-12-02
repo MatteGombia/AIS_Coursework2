@@ -164,8 +164,6 @@ def scan_for_cubes(robot: cozmo.robot.Robot):
     
     print("Scanning 360 degrees for cubes...")
     
-    cubeIDs = (LightCube1Id, LightCube2Id, LightCube3Id)
-    
     for step in range(steps):
         #Check each cube ID to see if visible at this angle
         cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
@@ -230,17 +228,6 @@ def is_path_blocked(start_f: Frame2D, end_f, obstacles_list, clearance_mm=50.0):
         if dist <= (clearance_mm):
             return True
     return False
-    
-def detect_cubes(robot: cozmo.robot.Robot):
-    cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
-    for cubeID in cubeIDs: 
-        cube = robot.world.get_light_cube(cubeID)
-        if cube is not None and cube.is_visible:
-            cubePose2D = Frame2D.fromPose(cube.pose)
-            print("   2D frame: " + str(cubePose2D))
-            #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
-            cubes[cubeID][1] = cubePose2D
-            cubes[cubeID][0] = True
     
 def add_reachable_position_to_map(robot: cozmo.robot.Robot):
     robotPose = Frame2D.fromPose(robot.pose)
