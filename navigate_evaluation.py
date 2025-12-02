@@ -12,6 +12,10 @@ CALIBRATION_TIME = 1.0
 IMAGE_DIFF_THRESHOLD = 8
 CALIBRATED_CONSTANT = 2.25
 
+WALL_RADIUS=100
+
+walls = {(100,0)}
+
 # Global tracking for visualisation
 navigation_data = {
     'path': [],  # List of (x, y) positions
@@ -201,11 +205,87 @@ def check_for_wall(robot, move_duration):
     
     return False
 
+def get_angle_math(x1, y1, x2, y2, x3, y3):
+    """
+    Calculates the angle in degrees between three points (p1, p2, p3) using the math module.
+    The angle is at the vertex p2.
+    """
+
+    # Create vectors
+    v1_x, v1_y = x1 - x2, y1 - y2
+    v2_x, v2_y = x3 - x2, y3 - y2
+
+    # Calculate dot product
+    dot_product = v1_x * v2_x + v1_y * v2_y
+
+    # Calculate magnitudes
+    norm_v1 = math.sqrt(v1_x**2 + v1_y**2)
+    norm_v2 = math.sqrt(v2_x**2 + v2_y**2)
+
+    # Calculate the cosine of the angle
+    if norm_v1 == 0 or norm_v2 == 0:
+        return 0.0
+    cos_theta = dot_product / (norm_v1 * norm_v2)
+    cos_theta = max(-1.0, min(1.0, cos_theta)) # Clip for floating point errors
+
+    angle_radians = math.acos(cos_theta)
+    return angle_radians
+
+def calculate_next_target(px, py, x1, y1, x2, y2):
+    """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
+    All units are assumed to be mm.
+    """
+    vx = x2 - x1
+    vy = y2 - y1
+    wx = px - x1
+    wy = py - y1
+    seg_len_sq = vx*vx + vy*vy
+    if seg_len_sq == 0:
+        return False, None, None
+    t = (wx*vx + wy*vy) / seg_len_sq
+    if t <= 0:
+        print("Wall before initial point")
+        return False, None, None
+    elif t >= 1:
+        print("Wall after target point")
+        return False, None, None
+    
+    cx = x1 + t * vx
+    cy = y1 + t * vy
+
+    if math.hypot(px - cx, py - cy) > WALL_RADIUS:
+        print("Wall too far from segment " + str(math.hypot(px - cx, py - cy)))
+        return False, None, None
+    
+    absolute_angle = get_angle_math(0, 1e10, x1, y1, x2, y2)
+    print(get_angle_math(0, 1e10, x1, y1, x2, y2))
+
+    sign = 1
+    if get_angle_math(x1, y1, x2, y2, px, py) < math.pi:
+        sign = -1
+
+    print(get_angle_math(x1, y1, x2, y2, px, py))
+
+    target_x = px + sign * WALL_RADIUS * math.cos(absolute_angle+math.pi/2)
+    target_y = py + sign * WALL_RADIUS * math.sin(absolute_angle+math.pi/2)
+    
+    return True, target_x, target_y
+
 def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
     tolerance = 50
     max_attempts = 40
     attempts = 0
     
+    for wall in walls: 
+        obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
+        if obstructed:
+            print("Obtacle found at %f, %f", wall[0], wall[1])
+            print("New partial target at %f, %f", new_target_x, new_target_y)
+            navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
+            x_current, y_current = new_target_x, new_target_y
+            continue
+
+
     # Initialise tracking
     reset_navigation_data(x_current, y_current, x_target, y_target)
     start_time = time.time()
