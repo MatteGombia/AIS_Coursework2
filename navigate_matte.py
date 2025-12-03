@@ -1,5 +1,5 @@
 import cozmo
-from cozmo.util import degrees, radians
+from cozmo.util import degrees, radians, Angle
 import math
 import time
 import numpy as np
@@ -196,6 +196,8 @@ def check_for_wall(robot, move_duration):
     if difference < IMAGE_DIFF_THRESHOLD:
         robot.drive_wheels(0, 0)
         print(f"Wall detected! Difference: {difference:.2f}")
+
+        add_wall_detection(get_current_pos())
         
         robot.drive_wheels(-WHEEL_SPEED, -WHEEL_SPEED, duration=move_duration)
         time.sleep(move_duration)
@@ -283,7 +285,6 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             print("New partial target at %f, %f", new_target_x, new_target_y)
             navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
             x_current, y_current = new_target_x, new_target_y
-            continue
 
 
     # Initialise tracking
@@ -329,33 +330,26 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         
         if wall_hit:
             print(f">>> WALL HIT at attempt {attempts + 1} <<<")
-            add_wall_detection(x_current, y_current)
+
+            x_current, y_current = get_current_pos(robot)
             
-            # Turn right 90°
-            print("Turning right 90°")
-            
-            
-            # REORIENT TOWARDS TARGET
-            dx = x_target - x_current
-            dy = y_target - y_current
-            target_angle = math.atan2(dy, dx)
-            
-            turn_amount = normalise_angle(target_angle - robot_heading)
-            
-            print(f">>> REORIENTING <<<")
-            print(f"Target angle: {math.degrees(target_angle):.0f}°")
-            print(f"Current heading: {math.degrees(robot_heading):.0f}°")
-            print(f"Turn amount: {math.degrees(turn_amount):.0f}°")
-            
-            robot.turn_in_place(radians(turn_amount)).wait_for_completed()
-            robot_heading = target_angle
-            print(f"New heading after reorientation: {math.degrees(robot_heading):.0f}°")
-            time.sleep(0.2)
+            #WRONG, If you came back, the wall is not there. Probably to add inside the function and use navigation data[-1]
+            #TO DO: Change wall and target 
+
+            #Find new way 
+            obstructed, new_target_x, new_target_y = calculate_next_target(navigation_data['walls_detected'][-1][0], navigation_data['walls_detected'][-1][1], x_current, y_current, x_target, y_target)
+            if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
+                print("Obtacle found at %f, %f", wall[0], wall[1])
+                print("New partial target at %f, %f", new_target_x, new_target_y)
+                navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
+                x_current, y_current = new_target_x, new_target_y
+
             
         else:
             print("No wall detected, moving forward")
-            x_current += move_distance * math.cos(robot_heading)
-            y_current += move_distance * math.sin(robot_heading)
+            x_current, y_current = get_current_pos(robot)
+            #x_current += move_distance * math.cos(robot_heading)
+            #y_current += move_distance * math.sin(robot_heading)
             add_position(x_current, y_current)
             print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
         
@@ -378,14 +372,13 @@ def cozmo_program(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
     time.sleep(0.5)
     print("Robot ready!")
-
-    add_wall_detection(200, 0)
     
     while True:
         print("\nDIAGONAL NAVIGATION")
         x_curr, y_curr = get_current_pos(robot)
         x_targ, y_targ = (400,10)
         reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
+        add_wall_detection(200, 0)
         
         if x_targ is not None:
             navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
