@@ -6,36 +6,20 @@ from statistics import mean
 from cozmo.util import degrees, Angle
 from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
 
-# ===== EDITABLE WALL POSITIONS =====
-# Define the ACTUAL physical positions of your markers in millimeters
-# These should match where you physically place the markers in the real world
-# 
-# IMPORTANT: If triangulation keeps failing, your wall positions might not match
-# your actual setup. Try these approaches:
-# 1. Measure the actual distance between your physical markers
-# 2. Adjust these coordinates to match that distance
-# 3. OR move your markers to match these coordinates
-# 
-# Example: If your markers are 500mm apart, use:
-#   WALL_POSITIONS = {'wall1': (0, 500), 'wall2': (500, 500)}
-#
 WALL_POSITIONS = {
-    'wall1': (0, 122),      # Wall 1 position (x, y) in mm
-    'wall2': (122, 122)    # Wall 2 position (x, y) in mm
+    'wall1': (0, 122),
+    'wall2': (122, 122)
 }
 
-# Map marker types to wall positions
-# Change these to match which physical markers you place at each position
 MARKER_TO_WALL = {
-    'CustomType01': 'wall1',  # First marker type goes to wall1 position
-    'CustomType02': 'wall2'   # Second marker type goes to wall2 position
+    'CustomType01': 'wall1',
+    'CustomType02': 'wall2'
 }
-# ===================================
 
 walls = []
 marked_walls_seen = []
 walls_angles = []
-wall_assignments = {}  # Maps detected marker objects to their fixed positions
+wall_assignments = {}
 
 
 def create_cozmo_walls(robot: cozmo.robot.Robot):
@@ -77,13 +61,11 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
     
     print("Creating custom walls (synchronous method)...")
     
-    # Define the first 8 walls with 200mm width
     for i in range(0, 8):
         wall = robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True)
         cozmo_walls.append(wall)
         print(f"  Defined wall {i+1}: {types[i]} with marker {markers[i]}")
     
-    # Define the next 8 walls with 300mm width
     for i in range(8, 16):
         wall = robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True)
         cozmo_walls.append(wall)
@@ -104,16 +86,13 @@ def handle_object_observed(evt, **kw):
     
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
-            # Get the full object type
             full_type = str(evt.obj.object_type)
             print(f"[DEBUG] Full object type: '{full_type}'")
             
-            # Try different ways to extract the type name
-            marker_type = full_type.split('.')[-1]  # Extract last part after dot
+            marker_type = full_type.split('.')[-1]
             print(f"[DEBUG] Extracted marker type: '{marker_type}'")
             print(f"[DEBUG] Available mappings: {list(MARKER_TO_WALL.keys())}")
             
-            # Check if this marker type is in our mapping
             if marker_type in MARKER_TO_WALL:
                 wall_key = MARKER_TO_WALL[marker_type]
                 fixed_position = WALL_POSITIONS[wall_key]
@@ -130,7 +109,6 @@ def handle_object_observed(evt, **kw):
                 print(f"[WARNING] Detected marker '{marker_type}' but it's not in our mapping")
                 print(f"[WARNING] Add this to MARKER_TO_WALL if you want to use it")
                 
-                # Auto-assign to next available wall position
                 if len(marked_walls_seen) < len(WALL_POSITIONS):
                     wall_keys = list(WALL_POSITIONS.keys())
                     wall_key = wall_keys[len(marked_walls_seen)]
@@ -198,9 +176,6 @@ def choose_correct_position(c1, c2, posA, posB, bearing1, bearing2):
 
 
 def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
-    """
-    Try triangulation with various fallback strategies if direct triangulation fails.
-    """
     x1, y1 = c1
     x2, y2 = c2
     wall_dist = math.hypot(x2 - x1, y2 - y1)
@@ -211,7 +186,6 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
     print(f"  Sum of distances: {d1 + d2:.1f}mm")
     print(f"  Difference of distances: {abs(d1 - d2):.1f}mm")
     
-    # Strategy 1: Try direct triangulation
     try:
         posA, posB = triangulate_from_two_markers(c1, c2, d1, d2)
         xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
@@ -221,10 +195,8 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
     except ValueError as e:
         print(f"[FALLBACK] Direct triangulation failed: {e}")
     
-    # Strategy 2: Scale distances proportionally to make them valid
     if d1 + d2 < wall_dist:
-        # Circles too far apart - scale up distances
-        scale = (wall_dist * 1.1) / (d1 + d2)  # 10% overlap
+        scale = (wall_dist * 1.1) / (d1 + d2)
         d1_scaled = d1 * scale
         d2_scaled = d2 * scale
         print(f"[FALLBACK] Strategy 2: Scaling distances up by {scale:.2f}x")
@@ -240,7 +212,6 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
             print(f"[FALLBACK] Strategy 2 failed")
     
     elif abs(d1 - d2) > wall_dist:
-        # One circle inside another - scale down the difference
         larger = max(d1, d2)
         smaller = min(d1, d2)
         new_larger = wall_dist * 0.9 + smaller
@@ -259,21 +230,16 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
         except ValueError:
             print(f"[FALLBACK] Strategy 2 failed")
     
-    # Strategy 3: Use bearing-based estimation
     print(f"[FALLBACK] Strategy 3: Using bearing-based position estimation")
     
-    # Calculate approximate position using bearings and distances
-    # Use the bearings to estimate robot position
     heading = (b1 + b2) / 2.0
     
-    # Calculate position from each wall using distance and bearing
     x1_est = c1[0] - d1 * math.cos(b1)
     y1_est = c1[1] - d1 * math.sin(b1)
     
     x2_est = c2[0] - d2 * math.cos(b2)
     y2_est = c2[1] - d2 * math.sin(b2)
     
-    # Average the two estimates
     xr = (x1_est + x2_est) / 2
     yr = (y1_est + y2_est) / 2
     
@@ -286,7 +252,6 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
 
 
 def localise_robot(c1, c2, d1, d2, b1, b2):
-    """Wrapper for backwards compatibility"""
     xr, yr, heading, method = triangulate_with_fallback(c1, c2, d1, d2, b1, b2)
     return xr, yr, heading
 
@@ -435,7 +400,6 @@ def main(robot: cozmo.robot.Robot):
     print(f"Internal Heading: {robot.pose.rotation.angle_z.radians:.3f} rad ({robot.pose.rotation.angle_z.degrees:.1f}°)")
     print("="*70)
     
-    # Calculate error
     error_x = abs(xr - robot.pose.position.x)
     error_y = abs(yr - robot.pose.position.y)
     error_dist = math.hypot(error_x, error_y)
@@ -450,7 +414,6 @@ def main(robot: cozmo.robot.Robot):
     print(f"Heading error: {math.degrees(error_heading):.1f}°")
     print("="*70)
     
-    # Provide recommendations based on method used
     if method != "direct":
         print("\n" + "="*70)
         print("⚠️  RECOMMENDATIONS")
@@ -461,7 +424,6 @@ def main(robot: cozmo.robot.Robot):
         print(f"   Current setting: {math.hypot(c2[0]-c1[0], c2[1]-c1[1]):.1f}mm")
         print(f"   Measured distances suggest: ~{d1+d2:.1f}mm total reach")
         
-        # Calculate suggested wall positions based on measurements
         actual_separation = min(d1 + d2, abs(d1 - d2) * 1.5)
         suggested_pos1 = (0, int(actual_separation))
         suggested_pos2 = (int(actual_separation), int(actual_separation))
