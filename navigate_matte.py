@@ -364,23 +364,36 @@ def get_current_heading(robot: cozmo.robot.Robot):
     robotPose = Frame2D.fromPose(robot.pose)
     return robotPose.angle()
 
+def rotation(robot: cozmo.robot.Robot, angle):  
+    move_duration_2pi = 1.6   
+
+    if angle > 0:
+        move_duration = move_duration_2pi * angle / math.pi
+        robot.drive_wheels(-WHEEL_SPEED, WHEEL_SPEED, duration=move_duration)
+    else:
+        move_duration = (-1) * move_duration_2pi * angle / math.pi
+        robot.drive_wheels(WHEEL_SPEED, -WHEEL_SPEED, duration=move_duration)
+    time.sleep(move_duration)
+    robot.drive_wheels(0, 0)
+    time.sleep(10)
+
 def cozmo_program(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
     time.sleep(0.5)
     print("Robot ready!")
     
-    while True:
-        print("\nDIAGONAL NAVIGATION")
-        x_curr, y_curr = get_current_pos(robot)
-        x_targ, y_targ = (1000,10)
-        reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
-        #add_wall_detection(200, 0)
+    # while True:
+    #     print("\nDIAGONAL NAVIGATION")
+    #     x_curr, y_curr = get_current_pos(robot)
+    #     x_targ, y_targ = (1000,10)
+    #     reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
+    #     #add_wall_detection(200, 0)
         
-        if x_targ is not None:
-            navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
-            print("\nGenerating visualisation...")
-            plot_navigation_results()
-            
+    #     if x_targ is not None:
+    #         navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
+    #         print("\nGenerating visualisation...")
+    #         plot_navigation_results()
+    rotation(robot, 1)
            
     
     robot.drive_wheels(0, 0)
