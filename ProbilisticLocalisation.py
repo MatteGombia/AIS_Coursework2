@@ -269,32 +269,24 @@ def get_marker_measurements(robot, marker_obj):
 
 
 def remove_outliers_iqr(data):
-    """
-    Remove outliers using the Interquartile Range (IQR) method.
-    Returns filtered data with outliers removed.
-    """
     if len(data) < 4:
         return data
     
     sorted_data = sorted(data)
     n = len(sorted_data)
-    
-    # Calculate Q1, Q2 (median), Q3
+
     q1_idx = n // 4
     q3_idx = 3 * n // 4
     
     q1 = sorted_data[q1_idx]
     q3 = sorted_data[q3_idx]
     iqr = q3 - q1
-    
-    # Define outlier boundaries (1.5 * IQR is standard)
+
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
-    
-    # Filter out outliers
+
     filtered = [x for x in data if lower_bound <= x <= upper_bound]
-    
-    # If we filtered out too much, return original
+
     if len(filtered) < len(data) * 0.5:
         return data
     
@@ -302,17 +294,6 @@ def remove_outliers_iqr(data):
 
 
 def filtered_measurements(robot, marker_obj, n=10):
-    """
-    Take multiple measurements and apply robust filtering to reduce noise.
-    
-    Process:
-    1. Collect n samples (default 10, up from 5)
-    2. Remove outliers using IQR method
-    3. Use median of remaining samples (more robust than mean)
-    4. Normalize angles properly
-    
-    Returns: (filtered_distance, filtered_bearing)
-    """
     dists = []
     bears = []
     
@@ -322,42 +303,33 @@ def filtered_measurements(robot, marker_obj, n=10):
         d, b = get_marker_measurements(robot, marker_obj)
         dists.append(d)
         bears.append(b)
-        time.sleep(0.05)  # Small delay between samples
+        time.sleep(0.05)
     
     print(" Done!")
     
-    # Filter distance measurements
     dists_filtered = remove_outliers_iqr(dists)
     
-    # For bearings, we need to be careful with angle wrapping
-    # Convert to unit vectors, filter, then convert back
     bears_x = [math.cos(b) for b in bears]
     bears_y = [math.sin(b) for b in bears]
     
-    # Calculate average direction using vector averaging
     avg_x = sum(bears_x) / len(bears_x)
     avg_y = sum(bears_y) / len(bears_y)
     avg_bearing = math.atan2(avg_y, avg_x)
     
-    # Remove bearing outliers based on angular distance from mean
     angular_diffs = [abs(normalise_angle(b - avg_bearing)) for b in bears]
     median_diff = sorted(angular_diffs)[len(angular_diffs) // 2]
     
-    # Keep bearings within 2.5 * median angular deviation
-    threshold = max(median_diff * 2.5, math.radians(10))  # At least 10 degrees
+    threshold = max(median_diff * 2.5, math.radians(10))
     bears_filtered = [b for b, diff in zip(bears, angular_diffs) if diff <= threshold]
     
-    # Use median for final distance
     median_d = sorted(dists_filtered)[len(dists_filtered) // 2]
-    
-    # Use circular mean for final bearing
+
     bears_filtered_x = [math.cos(b) for b in bears_filtered]
     bears_filtered_y = [math.sin(b) for b in bears_filtered]
     final_x = sum(bears_filtered_x) / len(bears_filtered_x)
     final_y = sum(bears_filtered_y) / len(bears_filtered_y)
     median_b = math.atan2(final_y, final_x)
     
-    # Print filtering statistics
     outliers_dist = n - len(dists_filtered)
     outliers_bear = n - len(bears_filtered)
     print(f"    Filtered out {outliers_dist} distance outliers, {outliers_bear} bearing outliers")
@@ -378,9 +350,7 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     steps = 18
     step_angle = 20
     
-    print("\n" + "="*70)
-    print("SCANNING FOR WALLS")
-    print("="*70)
+    print("Scanning for walls")
     print(f"Looking for {num_needed} wall markers...")
     print(f"Fixed wall positions: {WALL_POSITIONS}")
     print("Performing 360° scan...\n")
@@ -396,17 +366,13 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
             robot.turn_in_place(degrees(step_angle)).wait_for_completed()
             time.sleep(0.3)
     
-    print("\n" + "="*70)
     print(f"SCAN COMPLETE - Found {len(marked_walls_seen)} walls")
-    print("="*70 + "\n")
     
     return len(marked_walls_seen) >= num_needed
 
 
 def main(robot: cozmo.robot.Robot):
-    print("\n" + "="*70)
     print("Triangulation Localisation With Fixed Markers + Robust Filtering")
-    print("="*70)
     print(f"\nFixed Wall Positions:")
     for wall_key, pos in WALL_POSITIONS.items():
         print(f"  {wall_key}: ({pos[0]}, {pos[1]}) mm")
@@ -414,7 +380,6 @@ def main(robot: cozmo.robot.Robot):
     for marker_type, wall_key in MARKER_TO_WALL.items():
         pos = WALL_POSITIONS[wall_key]
         print(f"  {marker_type} -> {wall_key} at ({pos[0]}, {pos[1]})")
-    print("="*70 + "\n")
     
     robot.camera.image_stream_enabled = True
     print("✓ Camera enabled")
@@ -435,9 +400,7 @@ def main(robot: cozmo.robot.Robot):
     success = scan_for_walls(robot, num_needed=2)
     
     if not success or len(marked_walls_seen) < 2:
-        print("\n" + "="*70)
         print("ERROR: Could not find 2 walls")
-        print("="*70)
         print(f"Walls found: {len(marked_walls_seen)}")
         if len(marked_walls_seen) > 0:
             print("Detected walls:")
@@ -446,9 +409,7 @@ def main(robot: cozmo.robot.Robot):
                 print(f"  {i+1}. {wall_key} at fixed position {pos}")
         return
     
-    print("\n" + "="*70)
-    print("PERFORMING TRIANGULATION WITH ROBUST FILTERING")
-    print("="*70)
+    print("Performing triangulation with filtering")
     
     marker1 = marked_walls_seen[0]
     marker2 = marked_walls_seen[1]
@@ -474,43 +435,28 @@ def main(robot: cozmo.robot.Robot):
     
     xr, yr, heading, method = triangulate_with_fallback(c1, c2, d1, d2, b1, b2)
     
-    print("\n" + "="*70)
-    print("TRIANGULATION RESULTS")
-    print("="*70)
+    print("Triangulation Results")
     print(f"Method used: {method}")
     print(f"Calculated Robot Position: ({xr:.1f}, {yr:.1f}) mm")
     print(f"Calculated Robot Heading: {heading:.3f} rad ({math.degrees(heading):.1f}°)")
-    print("="*70)
     
-    print("\n" + "="*70)
     print("COZMO INTERNAL POSE (for comparison)")
-    print("="*70)
     print(f"Internal Position: ({robot.pose.position.x:.1f}, {robot.pose.position.y:.1f}) mm")
     print(f"Internal Heading: {robot.pose.rotation.angle_z.radians:.3f} rad ({robot.pose.rotation.angle_z.degrees:.1f}°)")
-    print("="*70)
     
     error_x = abs(xr - robot.pose.position.x)
     error_y = abs(yr - robot.pose.position.y)
     error_dist = math.hypot(error_x, error_y)
     error_heading = abs(normalise_angle(heading - robot.pose.rotation.angle_z.radians))
     
-    print("\n" + "="*70)
-    print("LOCALISATION ERROR")
-    print("="*70)
+    print("Localisation Error")
     print(f"Position error: {error_dist:.1f} mm")
     print(f"  X error: {error_x:.1f} mm")
     print(f"  Y error: {error_y:.1f} mm")
     print(f"Heading error: {math.degrees(error_heading):.1f}°")
-    print("="*70)
     
     if method != "direct":
-        print("\n" + "="*70)
-        print("⚠️  RECOMMENDATIONS")
-        print("="*70)
-        print(f"Triangulation used fallback method: '{method}'")
-        print("\nFor better accuracy, consider:")
-        print(f"1. The actual distance between your markers")
-        print(f"   Current setting: {math.hypot(c2[0]-c1[0], c2[1]-c1[1]):.1f}mm")
+        print(f"   Current settings: {math.hypot(c2[0]-c1[0], c2[1]-c1[1]):.1f}mm")
         print(f"   Measured distances suggest: ~{d1+d2:.1f}mm total reach")
         
         actual_separation = min(d1 + d2, abs(d1 - d2) * 1.5)
@@ -522,7 +468,6 @@ def main(robot: cozmo.robot.Robot):
         print(f"   'wall2': {suggested_pos2}")
         print("\n3. OR move your physical markers to better match")
         print("   the current WALL_POSITIONS settings")
-        print("="*70 + "\n")
     else:
         print("\n✓ Direct triangulation succeeded - wall positions are accurate!\n")
 
