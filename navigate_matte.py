@@ -16,6 +16,8 @@ CALIBRATED_CONSTANT = 2.25
 WALL_RADIUS=100
 WALL_THRESHOLD = 50
 
+wall_avoidance = False
+
 # Global tracking for visualisation
 navigation_data = {
     'path': [],  # List of (x, y) positions
@@ -151,29 +153,6 @@ def plot_navigation_results():
     
     plt.show()
 
-def save_navigation_data_csv():
-    """Save navigation data to CSV for further analysis"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"cozmo_navigation_data_{timestamp}.csv"
-    
-    with open(filename, 'w') as f:
-        f.write("Step,X,Y,Event\n")
-        for i, (x, y) in enumerate(navigation_data['path']):
-            event = "Start" if i == 0 else "Move"
-            if i == len(navigation_data['path']) - 1:
-                event = "End"
-            f.write(f"{i},{x:.2f},{y:.2f},{event}\n")
-        
-        for i, (x, y) in enumerate(navigation_data['walls_detected']):
-            f.write(f"-,{x:.2f},{y:.2f},Wall\n")
-    
-    print(f"Data saved as: {filename}")
-
-def calibrate(robot):
-    print(f"Calibrating: driving at {WHEEL_SPEED}mm/s for {CALIBRATION_TIME}s")
-    print("Measure the distance and update DISTANCE_PER_MOVE")
-    robot.drive_wheels(WHEEL_SPEED, WHEEL_SPEED, duration=CALIBRATION_TIME)
-    time.sleep(CALIBRATION_TIME + 0.5)
 
 def check_for_wall(robot, move_duration):
     img1 = robot.world.latest_image
@@ -197,7 +176,9 @@ def check_for_wall(robot, move_duration):
         robot.drive_wheels(0, 0)
         print(f"Wall detected! Difference: {difference:.2f}")
 
-        add_wall_detection(get_current_pos())
+        x,y = get_current_pos(robot)
+        add_wall_detection(x, y)
+        add_position(x,y)
         
         robot.drive_wheels(-WHEEL_SPEED, -WHEEL_SPEED, duration=move_duration)
         time.sleep(move_duration)
@@ -274,35 +255,38 @@ def calculate_next_target(px, py, x1, y1, x2, y2):
     return True, target_x, target_y
 
 def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
+    global wall_avoidance
     tolerance = 50
     max_attempts = 40
     attempts = 0
     
-    for wall in navigation_data['walls_detected']: 
-        obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
-        if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-            print("Obtacle found at %f, %f", wall[0], wall[1])
-            print("New partial target at %f, %f", new_target_x, new_target_y)
-            navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
-            x_current, y_current = new_target_x, new_target_y
+    if wall_avoidance is False:
+        for wall in navigation_data['walls_detected']: 
+            obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
+            if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
+                print("Obtacle found at %f, %f", wall[0], wall[1])
+                print("New partial target at %f, %f", new_target_x, new_target_y)
+                navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
+                x_current, y_current = new_target_x, new_target_y
 
-
+    wall_avoidance = False
     # Initialise tracking
     #reset_navigation_data(x_current, y_current, x_target, y_target)
     start_time = time.time()
     
     print(f"Navigating from ({x_current:.0f}, {y_current:.0f}) to ({x_target:.0f}, {y_target:.0f})")
     
-    dx = x_target - x_current
-    dy = y_target - y_current
-    distance = math.hypot(dx, dy)
-    robot_heading = math.atan2(dy, dx)
-    
-    print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
-    robot.turn_in_place(radians(robot_heading)).wait_for_completed()
-    time.sleep(0.2)
-    
     while attempts < max_attempts:
+        #check the heading
+        dx = x_target - x_current
+        dy = y_target - y_current
+        distance = math.hypot(dx, dy)
+        robot_heading = math.atan2(dy, dx)
+        get_current_heading
+        print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
+        robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
+        time.sleep(0.2)
+
         print(f"\n--- Attempt {attempts + 1} ---")
         print(f"Current position: ({x_current:.0f}, {y_current:.0f})")
         print(f"Current heading: {math.degrees(robot_heading):.0f}°")
@@ -332,18 +316,26 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             print(f">>> WALL HIT at attempt {attempts + 1} <<<")
 
             x_current, y_current = get_current_pos(robot)
+            add_position(x_current, y_current)
             
-            #WRONG, If you came back, the wall is not there. Probably to add inside the function and use navigation data[-1]
-            #TO DO: Change wall and target 
 
             #Find new way 
             obstructed, new_target_x, new_target_y = calculate_next_target(navigation_data['walls_detected'][-1][0], navigation_data['walls_detected'][-1][1], x_current, y_current, x_target, y_target)
             if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-                print("Obtacle found at %f, %f", wall[0], wall[1])
+                #print("Obtacle found at %f, %f", wall[0], wall[1])
+                wall_avoidance = True
                 print("New partial target at %f, %f", new_target_x, new_target_y)
                 navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
                 x_current, y_current = new_target_x, new_target_y
 
+                dx = x_target - x_current
+                dy = y_target - y_current
+                distance = math.hypot(dx, dy)
+                robot_heading = math.atan2(dy, dx)
+    
+                print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
+                robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
+                time.sleep(0.2)
             
         else:
             print("No wall detected, moving forward")
@@ -368,6 +360,10 @@ def get_current_pos(robot: cozmo.robot.Robot):
     robotPose = Frame2D.fromPose(robot.pose)
     return robotPose.x(), robotPose.y()
 
+def get_current_heading(robot: cozmo.robot.Robot):
+    robotPose = Frame2D.fromPose(robot.pose)
+    return robotPose.angle()
+
 def cozmo_program(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
     time.sleep(0.5)
@@ -376,9 +372,9 @@ def cozmo_program(robot: cozmo.robot.Robot):
     while True:
         print("\nDIAGONAL NAVIGATION")
         x_curr, y_curr = get_current_pos(robot)
-        x_targ, y_targ = (400,10)
+        x_targ, y_targ = (1000,10)
         reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
-        add_wall_detection(200, 0)
+        #add_wall_detection(200, 0)
         
         if x_targ is not None:
             navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
@@ -388,6 +384,6 @@ def cozmo_program(robot: cozmo.robot.Robot):
            
     
     robot.drive_wheels(0, 0)
-
+    plot_navigation_results()
 if __name__ == '__main__':
     cozmo.run_program(cozmo_program)
