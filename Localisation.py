@@ -292,9 +292,7 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     steps = 18
     step_angle = 20
     
-    print("\n" + "="*70)
-    print("SCANNING FOR WALLS")
-    print("="*70)
+    print("Scanning for walls")
     print(f"Looking for {num_needed} wall markers...")
     print(f"Fixed wall positions: {WALL_POSITIONS}")
     print("Performing 360° scan...\n")
@@ -310,17 +308,13 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
             robot.turn_in_place(degrees(step_angle)).wait_for_completed()
             time.sleep(0.3)
     
-    print("\n" + "="*70)
     print(f"SCAN COMPLETE - Found {len(marked_walls_seen)} walls")
-    print("="*70 + "\n")
     
     return len(marked_walls_seen) >= num_needed
 
 
 def main(robot: cozmo.robot.Robot):
-    print("\n" + "="*70)
     print("Triangulation Localisation With Fixed Markers")
-    print("="*70)
     print(f"\nFixed Wall Positions:")
     for wall_key, pos in WALL_POSITIONS.items():
         print(f"  {wall_key}: ({pos[0]}, {pos[1]}) mm")
@@ -328,7 +322,6 @@ def main(robot: cozmo.robot.Robot):
     for marker_type, wall_key in MARKER_TO_WALL.items():
         pos = WALL_POSITIONS[wall_key]
         print(f"  {marker_type} -> {wall_key} at ({pos[0]}, {pos[1]})")
-    print("="*70 + "\n")
     
     robot.camera.image_stream_enabled = True
     print("✓ Camera enabled")
@@ -349,9 +342,7 @@ def main(robot: cozmo.robot.Robot):
     success = scan_for_walls(robot, num_needed=2)
     
     if not success or len(marked_walls_seen) < 2:
-        print("\n" + "="*70)
         print("ERROR: Could not find 2 walls")
-        print("="*70)
         print(f"Walls found: {len(marked_walls_seen)}")
         if len(marked_walls_seen) > 0:
             print("Detected walls:")
@@ -360,9 +351,7 @@ def main(robot: cozmo.robot.Robot):
                 print(f"  {i+1}. {wall_key} at fixed position {pos}")
         return
     
-    print("\n" + "="*70)
-    print("PERFORMING TRIANGULATION")
-    print("="*70)
+    print("Performing Triangulation")
     
     marker1 = marked_walls_seen[0]
     marker2 = marked_walls_seen[1]
@@ -385,39 +374,28 @@ def main(robot: cozmo.robot.Robot):
     
     xr, yr, heading, method = triangulate_with_fallback(c1, c2, d1, d2, b1, b2)
     
-    print("\n" + "="*70)
-    print("TRIANGULATION RESULTS")
-    print("="*70)
+    print("Triangulation Results")
     print(f"Method used: {method}")
     print(f"Calculated Robot Position: ({xr:.1f}, {yr:.1f}) mm")
     print(f"Calculated Robot Heading: {heading:.3f} rad ({math.degrees(heading):.1f}°)")
-    print("="*70)
-    
-    print("\n" + "="*70)
+
     print("COZMO INTERNAL POSE (for comparison)")
-    print("="*70)
     print(f"Internal Position: ({robot.pose.position.x:.1f}, {robot.pose.position.y:.1f}) mm")
     print(f"Internal Heading: {robot.pose.rotation.angle_z.radians:.3f} rad ({robot.pose.rotation.angle_z.degrees:.1f}°)")
-    print("="*70)
     
     error_x = abs(xr - robot.pose.position.x)
     error_y = abs(yr - robot.pose.position.y)
     error_dist = math.hypot(error_x, error_y)
     error_heading = abs(normalise_angle(heading - robot.pose.rotation.angle_z.radians))
     
-    print("\n" + "="*70)
     print("LOCALISATION ERROR")
-    print("="*70)
     print(f"Position error: {error_dist:.1f} mm")
     print(f"  X error: {error_x:.1f} mm")
     print(f"  Y error: {error_y:.1f} mm")
     print(f"Heading error: {math.degrees(error_heading):.1f}°")
-    print("="*70)
     
     if method != "direct":
-        print("\n" + "="*70)
-        print("⚠️  RECOMMENDATIONS")
-        print("="*70)
+        print("Recommendations")
         print(f"Triangulation used fallback method: '{method}'")
         print("\nFor better accuracy, consider:")
         print(f"1. The actual distance between your markers")
@@ -433,7 +411,6 @@ def main(robot: cozmo.robot.Robot):
         print(f"   'wall2': {suggested_pos2}")
         print("\n3. OR move your physical markers to better match")
         print("   the current WALL_POSITIONS settings")
-        print("="*70 + "\n")
     else:
         print("\n✓ Direct triangulation succeeded - wall positions are accurate!\n")
 
