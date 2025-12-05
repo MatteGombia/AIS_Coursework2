@@ -282,7 +282,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         dy = y_target - y_current
         distance = math.hypot(dx, dy)
         robot_heading = math.atan2(dy, dx)
-        get_current_heading
+        #get_current_heading This wasn't doing anything. Maybe it should be current_heading = get_current_heading(robot)
         print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
         robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
         time.sleep(0.2)
