@@ -215,7 +215,7 @@ def get_angle_math(x1, y1, x2, y2, x3, y3):
     return angle_radians
 
 def isLeft(a, b, c):
-  return (b[0] - a[0])*(c[1] - a[1]) - (b[1] - a[1])*(c[0] - a[0]) > 0
+    return (b[0] - a[0])*(c[1] - a[1]) - (b[1] - a[1])*(c[0] - a[0]) > 0
 
 def calculate_next_target(px, py, x1, y1, x2, y2):
     """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
@@ -243,17 +243,21 @@ def calculate_next_target(px, py, x1, y1, x2, y2):
         print("Wall too far from segment " + str(math.hypot(px - cx, py - cy)))
         return False, None, None
     
-    absolute_angle = get_angle_math(0, 1e10, x1, y1, x2, y2)
-    print(get_angle_math(0, 1e10, x1, y1, x2, y2))
+    absolute_angle = math.atan2(vy, vx)
 
     sign = 1
-    if isLeft((x1, y1), (x2, y2), (px, py)) is False:
+    print(isLeft((x1, y1), (x2, y2), (px, py)))
+    if isLeft((x1, y1), (x2, y2), (px, py)) == False:
+        print("Wall on the right")
+        sign = 1
+    else: 
+        print("Wall on the left")
         sign = -1
+    
+    print("absolute angle of segment: " + str(absolute_angle))
 
-    print(get_angle_math(x1, y1, x2, y2, px, py))
-
-    target_x = px + sign * (WALL_RADIUS+WALL_THRESHOLD) * math.sin(absolute_angle+math.pi/2)
-    target_y = py + sign * (WALL_RADIUS+WALL_THRESHOLD) * math.cos(absolute_angle+math.pi/2)
+    target_x = px + sign * (WALL_RADIUS+WALL_THRESHOLD) * math.cos(absolute_angle+math.pi/2)
+    target_y = py + sign * (WALL_RADIUS+WALL_THRESHOLD) * math.sin(absolute_angle+math.pi/2)
     
     return True, target_x, target_y
 
@@ -400,9 +404,12 @@ def cozmo_program(robot: cozmo.robot.Robot):
     while True:
         print("\nDIAGONAL NAVIGATION")
         x_curr, y_curr = get_current_pos(robot)
-        x_targ, y_targ = (1000,10)
+        x_targ, y_targ = (1000, 0)
+        #x_targ, y_targ = (100,1000)
         reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
-        add_wall_detection(200, 0)
+        add_wall_detection(200, -10)
+        add_wall_detection(600, 100)
+        add_wall_detection(800, -50)
         
         if x_targ is not None:
             navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
