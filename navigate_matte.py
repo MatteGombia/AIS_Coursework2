@@ -18,8 +18,6 @@ WALL_THRESHOLD = 50
 ANGLE_THRESHOLD = 0.05
 MIN_ROTATION_SEC = 0.30  
 
-wall_avoidance = False
-
 # Global tracking for visualisation
 navigation_data = {
     'path': [],  # List of (x, y) positions
@@ -148,10 +146,10 @@ def plot_navigation_results():
     plt.tight_layout()
     
     # Save the figure
-    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # filename = f"cozmo_navigation_{timestamp}.png"
-    # plt.savefig(filename, dpi=300, bbox_inches='tight')
-    # print(f"\nVisualisation saved as: {filename}")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"cozmo_navigation_{timestamp}.png"
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    print(f"\nVisualisation saved as: {filename}")
     
     plt.show()
 
@@ -216,6 +214,9 @@ def get_angle_math(x1, y1, x2, y2, x3, y3):
     angle_radians = math.acos(cos_theta)
     return angle_radians
 
+def isLeft(a, b, c):
+  return (b[0] - a[0])*(c[1] - a[1]) - (b[1] - a[1])*(c[0] - a[0]) > 0
+
 def calculate_next_target(px, py, x1, y1, x2, y2):
     """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
     All units are assumed to be mm.
@@ -246,7 +247,7 @@ def calculate_next_target(px, py, x1, y1, x2, y2):
     print(get_angle_math(0, 1e10, x1, y1, x2, y2))
 
     sign = 1
-    if get_angle_math(x1, y1, x2, y2, px, py) < math.pi:
+    if isLeft((x1, y1), (x2, y2), (px, py)) is False:
         sign = -1
 
     print(get_angle_math(x1, y1, x2, y2, px, py))
@@ -257,21 +258,26 @@ def calculate_next_target(px, py, x1, y1, x2, y2):
     return True, target_x, target_y
 
 def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0):
-    global wall_avoidance
     tolerance = 50
     max_attempts = 40
     attempts = 0
     
-    if wall_avoidance is False:
-        for wall in navigation_data['walls_detected']: 
-            obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
-            if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-                print("Obstacle found at %f, %f", wall[0], wall[1])
-                print("New partial target at %f, %f", new_target_x, new_target_y)
-                navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
-                x_current, y_current = new_target_x, new_target_y
+    dx = x_target - x_current
+    dy = y_target - y_current
+    distance = math.hypot(dx, dy)
+    
+    for wall in navigation_data['walls_detected']: 
+        if distance < math.hypot(wall[0]-x_target, wall[1]-y_target):
+            #Avoid situation where wall is too close to the position to always be considered
+            continue
 
-    wall_avoidance = False
+        obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
+        if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10 and math.hypot(new_target_x-x_current, new_target_y-y_target):
+            print("Obstacle found at %f, %f", wall[0], wall[1])
+            print("New partial target at %f, %f", new_target_x, new_target_y)
+            navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
+            x_current, y_current = new_target_x, new_target_y
+
     # Initialise tracking
     #reset_navigation_data(x_current, y_current, x_target, y_target)
     start_time = time.time()
@@ -284,19 +290,14 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         dy = y_target - y_current
         distance = math.hypot(dx, dy)
         robot_heading = math.atan2(dy, dx)
-        #get_current_heading This wasn't doing anything. Maybe it should be current_heading = get_current_heading(robot)
+
         print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
         robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
         time.sleep(0.2)
 
         print(f"\n--- Attempt {attempts + 1} ---")
         print(f"Current position: ({x_current:.0f}, {y_current:.0f})")
-        print(f"Current heading: {math.degrees(robot_heading):.0f}°")
-        
-        dx = x_target - x_current
-        dy = y_target - y_current
-        distance = math.hypot(dx, dy)
-        
+        print(f"Current heading: {math.degrees(robot_heading):.0f}°") 
         print(f"Distance to target: {distance:.0f}mm")
         
         if distance < tolerance:
@@ -313,38 +314,23 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         
         print(f"Checking for wall ahead...")
         wall_hit = check_for_wall(robot, move_duration)
-        
+
+        x_current, y_current = get_current_pos(robot)
+        add_position(x_current, y_current)
+
         if wall_hit:
             print(f">>> WALL HIT at attempt {attempts + 1} <<<")
-
-            x_current, y_current = get_current_pos(robot)
-            add_position(x_current, y_current)
-            
 
             #Find new way 
             obstructed, new_target_x, new_target_y = calculate_next_target(navigation_data['walls_detected'][-1][0], navigation_data['walls_detected'][-1][1], x_current, y_current, x_target, y_target)
             if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-                #print("Obstacle found at %f, %f", wall[0], wall[1])
-                wall_avoidance = True
                 print("New partial target at %f, %f", new_target_x, new_target_y)
                 navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
-                x_current, y_current = new_target_x, new_target_y
-
-                dx = x_target - x_current
-                dy = y_target - y_current
-                distance = math.hypot(dx, dy)
-                robot_heading = math.atan2(dy, dx)
-    
-                print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
-                robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
-                time.sleep(0.2)
+                x_current, y_current = get_current_pos(robot)
+                add_position(x_current, y_current)
             
         else:
             print("No wall detected, moving forward")
-            x_current, y_current = get_current_pos(robot)
-            #x_current += move_distance * math.cos(robot_heading)
-            #y_current += move_distance * math.sin(robot_heading)
-            add_position(x_current, y_current)
             print(f"Moved forward to ({x_current:.0f}, {y_current:.0f})")
         
         attempts += 1
@@ -385,13 +371,9 @@ def rotation(robot: cozmo.robot.Robot, angle):
     difference = normalise_angle(difference)
 
     while abs(difference) > ANGLE_THRESHOLD:
-        
-
         #debug
-        attempts+=1
-        print("Difference from target: " + str(difference))
-
-
+        # attempts+=1
+        # print("Difference from target: " + str(difference))
         move_duration = abs(move_duration_2pi * difference / (2 * math.pi))
         move_duration = max(MIN_ROTATION_SEC, move_duration)
         if difference < 0:
@@ -405,8 +387,8 @@ def rotation(robot: cozmo.robot.Robot, angle):
         difference = get_current_heading(robot) - target
         difference = normalise_angle(difference)
 
-    print("Attempts: " + str(attempts))
-    print("Difference: " + str(difference))
+    # print("Attempts: " + str(attempts))
+    # print("Difference: " + str(difference))
     
 
 
@@ -415,26 +397,28 @@ def cozmo_program(robot: cozmo.robot.Robot):
     time.sleep(0.5)
     print("Robot ready!")
     
-    # while True:
-    #     print("\nDIAGONAL NAVIGATION")
-    #     x_curr, y_curr = get_current_pos(robot)
-    #     x_targ, y_targ = (1000,10)
-    #     reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
-    #     #add_wall_detection(200, 0)
+    while True:
+        print("\nDIAGONAL NAVIGATION")
+        x_curr, y_curr = get_current_pos(robot)
+        x_targ, y_targ = (1000,10)
+        reset_navigation_data(x_curr, y_curr, x_targ, y_targ)
+        add_wall_detection(200, 0)
         
-    #     if x_targ is not None:
-    #         navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
-    #         print("\nGenerating visualisation...")
-    #         plot_navigation_results()
-    print("Current Heading: " + str(get_current_heading(robot)))
+        if x_targ is not None:
+            navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
+            print("\nGenerating visualisation...")
+            plot_navigation_results()
 
-    start = time.time()
-    rotation(robot, math.pi/4)
-    stop = time.time()
+    #Test rotation
+    # print("Current Heading: " + str(get_current_heading(robot)))
 
-    print(stop - start)
-    print(math.pi/8)
-    print(get_current_heading(robot))
+    # start = time.time()
+    # rotation(robot, math.pi/4)
+    # stop = time.time()
+
+    # print(stop - start)
+    # print(math.pi/8)
+    # print(get_current_heading(robot))
            
     
     robot.drive_wheels(0, 0)
