@@ -266,7 +266,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         for wall in navigation_data['walls_detected']: 
             obstructed, new_target_x, new_target_y = calculate_next_target(wall[0], wall[1], x_current, y_current, x_target, y_target)
             if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-                print("Obtacle found at %f, %f", wall[0], wall[1])
+                print("Obstacle found at %f, %f", wall[0], wall[1])
                 print("New partial target at %f, %f", new_target_x, new_target_y)
                 navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
                 x_current, y_current = new_target_x, new_target_y
@@ -284,7 +284,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
         dy = y_target - y_current
         distance = math.hypot(dx, dy)
         robot_heading = math.atan2(dy, dx)
-        get_current_heading
+        #get_current_heading This wasn't doing anything. Maybe it should be current_heading = get_current_heading(robot)
         print(f"Initial: Distance {distance:.0f}mm, Angle {math.degrees(robot_heading):.0f}°")
         robot.turn_in_place(radians(robot_heading - get_current_heading(robot))).wait_for_completed()
         time.sleep(0.2)
@@ -324,7 +324,7 @@ def navigate_with_avoidance(robot, x_target, y_target, x_current=0, y_current=0)
             #Find new way 
             obstructed, new_target_x, new_target_y = calculate_next_target(navigation_data['walls_detected'][-1][0], navigation_data['walls_detected'][-1][1], x_current, y_current, x_target, y_target)
             if obstructed and math.hypot(new_target_x-x_current, new_target_y-y_target)>10:
-                #print("Obtacle found at %f, %f", wall[0], wall[1])
+                #print("Obstacle found at %f, %f", wall[0], wall[1])
                 wall_avoidance = True
                 print("New partial target at %f, %f", new_target_x, new_target_y)
                 navigate_with_avoidance(robot, new_target_x, new_target_y, x_current, y_current)
