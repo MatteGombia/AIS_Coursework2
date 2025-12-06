@@ -15,6 +15,8 @@ CALIBRATED_CONSTANT = 2.25
 
 WALL_RADIUS=100
 WALL_THRESHOLD = 50
+ANGLE_THRESHOLD = 0.05
+MIN_ROTATION_SEC = 0.30  
 
 wall_avoidance = False
 
@@ -146,10 +148,10 @@ def plot_navigation_results():
     plt.tight_layout()
     
     # Save the figure
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"cozmo_navigation_{timestamp}.png"
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"\nVisualisation saved as: {filename}")
+    # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # filename = f"cozmo_navigation_{timestamp}.png"
+    # plt.savefig(filename, dpi=300, bbox_inches='tight')
+    # print(f"\nVisualisation saved as: {filename}")
     
     plt.show()
 
@@ -364,18 +366,49 @@ def get_current_heading(robot: cozmo.robot.Robot):
     robotPose = Frame2D.fromPose(robot.pose)
     return robotPose.angle()
 
-def rotation(robot: cozmo.robot.Robot, angle):  
-    move_duration_2pi = 1.6   
+def normalise_angle(angle):
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
 
-    if angle > 0:
-        move_duration = move_duration_2pi * angle / math.pi
-        robot.drive_wheels(-WHEEL_SPEED, WHEEL_SPEED, duration=move_duration)
-    else:
-        move_duration = (-1) * move_duration_2pi * angle / math.pi
-        robot.drive_wheels(WHEEL_SPEED, -WHEEL_SPEED, duration=move_duration)
-    time.sleep(move_duration)
-    robot.drive_wheels(0, 0)
-    time.sleep(10)
+def rotation(robot: cozmo.robot.Robot, angle):  
+    #debug
+    attempts = 0
+
+    move_duration_2pi = 3.0  
+    target = get_current_heading(robot) + angle
+    print("Target: " + str(target))
+
+    difference = get_current_heading(robot) - target
+    difference = normalise_angle(difference)
+
+    while abs(difference) > ANGLE_THRESHOLD:
+        
+
+        #debug
+        attempts+=1
+        print("Difference from target: " + str(difference))
+
+
+        move_duration = abs(move_duration_2pi * difference / (2 * math.pi))
+        move_duration = max(MIN_ROTATION_SEC, move_duration)
+        if difference < 0:
+            robot.drive_wheels(-WHEEL_SPEED, WHEEL_SPEED, duration=move_duration)
+        else:
+            robot.drive_wheels(WHEEL_SPEED, -WHEEL_SPEED, duration=move_duration)
+        time.sleep(move_duration)
+        # robot.drive_wheels(0, 0)
+        # time.sleep(0.1)
+
+        difference = get_current_heading(robot) - target
+        difference = normalise_angle(difference)
+
+    print("Attempts: " + str(attempts))
+    print("Difference: " + str(difference))
+    
+
 
 def cozmo_program(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
@@ -393,10 +426,19 @@ def cozmo_program(robot: cozmo.robot.Robot):
     #         navigate_with_avoidance(robot, x_targ, y_targ, x_curr, y_curr)
     #         print("\nGenerating visualisation...")
     #         plot_navigation_results()
-    rotation(robot, 1)
+    print("Current Heading: " + str(get_current_heading(robot)))
+
+    start = time.time()
+    rotation(robot, math.pi/4)
+    stop = time.time()
+
+    print(stop - start)
+    print(math.pi/8)
+    print(get_current_heading(robot))
            
     
     robot.drive_wheels(0, 0)
+
     plot_navigation_results()
 if __name__ == '__main__':
     cozmo.run_program(cozmo_program)
