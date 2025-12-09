@@ -641,7 +641,7 @@ def plot_map():
     ax.legend(loc='upper right')
     
     plt.tight_layout()
-    plt.savefig('/mnt/user-data/outputs/slam_map.png', dpi=300)
+    plt.savefig('slam_map.png', dpi=300)
     print("Map saved as slam_map.png")
     print(f"\nStatistics:")
     print(f"  Time: {elapsed:.1f}s")
