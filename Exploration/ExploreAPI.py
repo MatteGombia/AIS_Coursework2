@@ -1,36 +1,44 @@
 import cozmo
-import time
-from cozmo.util import degrees, distance_mm, Angle, Pose
-from cozmo.objects import LightCube, LightCube1Id, LightCube2Id, LightCube3Id
-import numpy as np
-import matplotlib.pyplot as plt
 import math
-from frame2d import Frame2D
+import time
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from cozmo.util import degrees, Angle, Pose
 from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
 
-#Tracking variables
-robot_x = 0
-robot_y = 0  
-map = dict()
-path = []
-walls = []
-marked_walls_seen=[]
-walls_angles = []
-cubes = {cozmo.objects.LightCube1Id: [False, None],
-         cozmo.objects.LightCube2Id: [False, None],
-         cozmo.objects.LightCube3Id: [False, None]}
-start_time = time.time()
-MOVE_DISTANCE = 400  #Distance to move per step
-RANGE_MAP_KEY = 20
+# Configuration
+WALL_POSITIONS = {
+    'wall1': (0, 122),
+    'wall2': (122, 122)
+}
+
+MARKER_TO_WALL = {
+    'CustomType01': 'wall1',
+    'CustomType02': 'wall2'
+}
+
+MOVE_DISTANCE = 400
 WALL_RADIUS = 100
+POSITION_TOLERANCE = 50
+RANGE_MAP_KEY = 20
 RADIUS_CIRCLES = 300
 
-#Setup the plot
-fig, ax = plt.subplots(figsize=(10, 10))
-plt.ion()
-plt.show()
-    
+# Global tracking variables
+walls = []
+marked_walls_seen = []
+walls_angles = []
+wall_assignments = {}
+map = dict()  # Stores positions and their reachable neighbours
+explored_positions = []
+current_position = (0, 0)
+current_heading = 0
+path_history = []
+cube_positions = []
+start_time = time.time()
+
+
 def create_cozmo_walls(robot: cozmo.robot.Robot):
+    #Creates custom wall objects that Cozmo can detect
     types = [CustomObjectTypes.CustomType01,
              CustomObjectTypes.CustomType02,
              CustomObjectTypes.CustomType03,
@@ -47,6 +55,7 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
              CustomObjectTypes.CustomType14,
              CustomObjectTypes.CustomType15,
              CustomObjectTypes.CustomType16]
+    
     markers = [CustomObjectMarkers.Circles2,
              CustomObjectMarkers.Diamonds2,
              CustomObjectMarkers.Hexagons2,
@@ -63,280 +72,686 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
              CustomObjectMarkers.Diamonds5,
              CustomObjectMarkers.Hexagons5,
              CustomObjectMarkers.Triangles5]
+    
     cozmo_walls = []
-    for i in range(0,8):
-        cozmo_walls.append(robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True))
     
-    for i in range(8,16):
-        cozmo_walls.append(robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True))
+    print("Creating custom walls")
+    
+    for i in range(0, 8):
+        wall = robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True)
+        cozmo_walls.append(wall)
+    
+    for i in range(8, 16):
+        wall = robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True)
+        cozmo_walls.append(wall)
+    
+    return cozmo_walls
 
-def add_wall(wall_x, wall_y):
+
+def add_wall(wall_x, wall_y, wall_angle):
+    #Adds a wall to the map
     walls.append((wall_x, wall_y))
+    walls_angles.append(wall_angle)
+    print(f"Added wall at ({wall_x:.0f}, {wall_y:.0f})")
 
-
-def draw_map(robot: cozmo.robot.Robot):
-    global ax
-    ax.clear()
-
-    robotPose = Frame2D.fromPose(robot.pose)
-    robot_angle = robotPose.angle()
-    
-    #Centre view on robot
-    ax.set_xlim(robotPose.x() - 1000, robotPose.x() + 1000)
-    ax.set_ylim(robotPose.y() - 1000, robotPose.y() + 1000)
-    ax.set_aspect('equal')
-    ax.grid(True, alpha=0.3)
-    
-    elapsed = int(time.time() - start_time)
-    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {len(cubes)}')
-    
-    #Draw the path
-    if len(path) > 1:
-        path_xs = [p[0] for p in path]
-        path_ys = [p[1] for p in path]
-        ax.plot(path_xs, path_ys, 'b-', alpha=0.5)
-    for (x,y) in path:
-        circle = plt.Circle((x, y), RADIUS_CIRCLES, color='g')
-        ax.add_patch(circle)
-
-    
-    #Draw walls (as points)
-    for i in range(len(walls)):
-        wall_x, wall_y = walls[i]
-        ax.plot(wall_x, wall_y, 'rs', markersize=10, markeredgecolor='darkred', markeredgewidth=2)
-
-        wall_x1 = wall_x - WALL_RADIUS * math.cos(walls_angles[i])
-        wall_y1 = wall_y - WALL_RADIUS * math.sin(walls_angles[i])
-        wall_x2 = wall_x + WALL_RADIUS * math.cos(walls_angles[i])
-        wall_y2 = wall_y + WALL_RADIUS * math.sin(walls_angles[i])
-        ax.plot([wall_x1, wall_x2], [wall_y1, wall_y2], 'r-', linewidth=3)
-    
-    #Draw cubes (yellow squares)
-    count_cubes = 0
-    cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
-    for cubeID in cubeIDs: 
-        if cubes[cubeID][0] == True:
-            count_cubes += 1
-            ax.plot(cubes[cubeID][1].x(), cubes[cubeID][1].y(), 'ys', markersize=15, markeredgecolor='orange', markeredgewidth=2)
-    
-    ax.set_title(f'Time: {elapsed}s | Walls: {len(walls)} | Cubes Found: {count_cubes}')
-
-    #Draw Cozmo
-    ax.plot(robotPose.x(), robotPose.y(), 'bo', markersize=10)
-    
-    #Arrow showing which way the Cozmo is facing
-    
-    arrow_len = 80
-    arrow_x = robotPose.x() + arrow_len * math.cos(robot_angle)
-    arrow_y = robotPose.y() + arrow_len * math.sin(robot_angle)
-    ax.arrow(robotPose.x(), robotPose.y(), arrow_x - robotPose.x(), arrow_y - robotPose.y(), 
-             head_width=30, head_length=30, fc='blue', ec='blue')
-    
-    plt.draw()
-    plt.pause(0.01)
-
-def print_stats():
-    elapsed = time.time() - start_time
-    
-    #Calculate total distance traveled
-    total_dist = 0
-    for i in range(1, len(path)):
-        dx = path[i][0] - path[i-1][0]
-        dy = path[i][1] - path[i-1][1]
-        total_dist += math.sqrt(dx*dx + dy*dy)
-    
-    print("\nStats")
-    print(f"Time: {elapsed:.1f}s")
-    print(f"Distance: {total_dist:.0f}mm")
-    print(f"Walls: {len(walls)}")
-    print(f"Cubes found: {len(cubes)}")
-
-def go_to_new_position(robot: cozmo.robot.Robot, target_x, target_y):
-    #Test for exploration
-    robot.go_to_pose(Pose(target_x, target_y, 0, angle_z=degrees(0)))
-    time.sleep(10.0)
-
-def scan_for_cubes(robot: cozmo.robot.Robot):
-    #Do a 360-degree stepwise scan looking for cubes
-    
-    steps = 18  #18 steps * 20 degrees = 360 degrees
-    step_angle = 20
-    
-    print("Scanning 360 degrees for cubes...")
-    
-    for step in range(steps):
-        #Check each cube ID to see if visible at this angle
-        cubeIDs = (cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id)
-        for cubeID in cubeIDs: 
-            cube = robot.world.get_light_cube(cubeID)
-            if cube is not None and cube.is_visible:
-                cubePose2D = Frame2D.fromPose(cube.pose)
-                #robot.go_to_object(cube, distance_mm(50.0)).wait_for_completed()
-                cubes[cubeID][1] = cubePose2D
-                cubes[cubeID][0] = True
-                print(f"Found a cube at" + str(cubePose2D) + "mm during scan!")
-                
-                robot.drive_wheels(0, 0)
-                time.sleep(0.2)
-                draw_map(robot)
-                #Continue scanning for other cubes
-        
-        #Turn to next scan position
-        if step < steps - 1:  #Don't turn on the last step
-            robot.turn_in_place(degrees(step_angle)).wait_for_completed()
-            time.sleep(0.1)
-            draw_map(robot)
-    
-    return False  #Scan complete
-
-def _distance_point_to_segment(px, py, x1, y1, x2, y2):
-    """Return shortest distance from point (px,py) to segment (x1,y1)-(x2,y2).
-    All units are assumed to be mm.
-    """
-    vx = x2 - x1
-    vy = y2 - y1
-    wx = px - x1
-    wy = py - y1
-    seg_len_sq = vx*vx + vy*vy
-    if seg_len_sq == 0:
-        return math.hypot(px - x1, py - y1)
-    t = (wx*vx + wy*vy) / seg_len_sq
-    if t <= 0:
-        cx, cy = x1, y1
-    elif t >= 1:
-        cx, cy = x2, y2
-    else:
-        cx = x1 + t * vx
-        cy = y1 + t * vy
-    return math.hypot(px - cx, py - cy)
-
-
-def is_path_blocked(start_f: Frame2D, end_f, obstacles_list, clearance_mm=50.0):
-    """Check whether any obstacle in obstacles_list lies within clearance_mm
-    (plus obstacle radius if available) of the straight-line segment from
-    start_f to end_f. Returns (blocked: bool, obstacle, distance_mm).
-    """
-    sx, sy = start_f.x(), start_f.y()
-    ex, ey = end_f[0], end_f[1]
-    for obs in obstacles_list:
-        try:
-            ox, oy = obs[0], obs[1]
-        except Exception:
-            continue
-        dist = _distance_point_to_segment(ox, oy, sx, sy, ex, ey)
-        
-        if dist <= (clearance_mm):
-            return True
-    return False
-    
-def add_reachable_position_to_map(robot: cozmo.robot.Robot, current_position):
-    
-    possible_map_positions = [
-        (current_position[0] + MOVE_DISTANCE, current_position[1]),
-        (current_position[0] - MOVE_DISTANCE, current_position[1]),
-        (current_position[0], current_position[1] + MOVE_DISTANCE),
-        (current_position[0], current_position[1] - MOVE_DISTANCE)
-    ]
-    max_distance = 0  # Max distance Cozmo can travel in one go
-    default_position = None
-    valid_positions = []
-    for position in possible_map_positions:
-        blocked, distance = is_path_blocked(current_position, position, walls, clearance_mm=WALL_RADIUS)
-        
-        if distance is not None and distance > max_distance:
-            max_distance = distance
-            default_position = position
-
-        if blocked:
-            print("Path to position %s is BLOCKED by an obstacle." % str(position))
-            continue
-        
-        valid_positions.append(position)
-
-    if default_position is not None and len(valid_positions) == 0:
-        valid_positions.append(default_position)
-
-    return valid_positions
-
-def isSeen(position):
-    for map_key in map.keys():
-            if position[0] > map_key[0]-RANGE_MAP_KEY and position[0] < map_key[0]+RANGE_MAP_KEY and position[1] > map_key[1]-RANGE_MAP_KEY and position[1] < map_key[1]+RANGE_MAP_KEY:
-                return True, map_key
-    return False, None
-
-def choose_next_position(possible_map_positions):
-    for position in possible_map_positions:
-        print("Possible position to explore: " + str(position))
-        position_seen, _ = isSeen(position)
-        if(not position_seen):
-            return position
-    return possible_map_positions[0]
 
 def handle_object_observed(evt, **kw):
-    global walls
-    # This will be called whenever an EvtObjectDisappeared is dispatched -
-    # whenever an Object goes out of view.
+    #Gets called when Cozmo sees a wall marker
+    global walls, marked_walls_seen, walls_angles, wall_assignments
+    
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
-            marked_walls_seen.append(evt.obj)
-            print("Cozmo observed a wall at %s" % str(evt.obj.pose.position))
-            print(evt.obj)
-            add_wall(evt.obj.pose.position.x, evt.obj.pose.position.y)
-            walls_angles.append(evt.obj.pose.rotation.angle_z.radians + math.pi/2)
-        
-def explore(robot: cozmo.robot.Robot):
-    global path
+            full_type = str(evt.obj.object_type)
+            marker_type = full_type.split('.')[-1]
+            
+            if marker_type in MARKER_TO_WALL:
+                #This is a known wall marker
+                wall_key = MARKER_TO_WALL[marker_type]
+                fixed_position = WALL_POSITIONS[wall_key]
+                
+                marked_walls_seen.append(evt.obj)
+                wall_assignments[evt.obj] = (wall_key, fixed_position)
+                
+                wall_angle = evt.obj.pose.rotation.angle_z.radians + math.pi/2
+                add_wall(fixed_position[0], fixed_position[1], wall_angle)
+                
+                print(f"Found known wall: {marker_type} at {fixed_position}")
+            else:
+                #Unknown marker, add it as a new wall
+                wall_x = evt.obj.pose.position.x
+                wall_y = evt.obj.pose.position.y
+                wall_angle = evt.obj.pose.rotation.angle_z.radians + math.pi/2
+                
+                marked_walls_seen.append(evt.obj)
+                add_wall(wall_x, wall_y, wall_angle)
+                
+                print(f"Found unknown wall at ({wall_x:.0f}, {wall_y:.0f})")
 
-    robot.camera.image_stream_enabled = True
-    robot.set_lift_height(0.0).wait_for_completed()
+
+def fix_angle(angle):
+    #Keeps angle between -pi and pi
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
+
+def find_robot_position(c1, c2, d1, d2):
+    #Finds robot position using two wall distances (trilateration)
+    x1, y1 = c1
+    x2, y2 = c2
+
+    dx = x2 - x1
+    dy = y2 - y1
+    wall_distance = math.sqrt(dx*dx + dy*dy)
+
+    if wall_distance == 0:
+        return None, None
     
-    print("Starting exploration with position-based navigation")
+    #Checks if circles can intersect
+    if wall_distance > d1 + d2 or wall_distance < abs(d1 - d2):
+        return None, None
+
+    a = (d1*d1 - d2*d2 + wall_distance*wall_distance) / (2 * wall_distance)
+    h_squared = d1*d1 - a*a
+    if h_squared < 0:
+        return None, None
+    h = math.sqrt(h_squared)
+
+    x3 = x1 + a * dx / wall_distance
+    y3 = y1 + a * dy / wall_distance
+
+    #Two possible positions
+    rx1 = x3 + h * (dy / wall_distance)
+    ry1 = y3 - h * (dx / wall_distance)
+
+    rx2 = x3 - h * (dy / wall_distance)
+    ry2 = y3 + h * (dx / wall_distance)
+
+    return (rx1, ry1), (rx2, ry2)
+
+
+def pick_right_position(c1, c2, posA, posB, bearing1, bearing2):
+    #Checks which position matches the bearings better
+    xr, yr = posA
+    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
+    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
+    error1 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
+
+    xr, yr = posB
+    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
+    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
+    error2 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
+
+    if error1 < error2:
+        return posA
+    else:
+        return posB
+
+
+def figure_out_position(c1, c2, d1, d2, b1, b2):
+    #Calculates robot position from two wall measurements
+    x1, y1 = c1
+    x2, y2 = c2
+    wall_dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+    
+    print(f"  Walls are {wall_dist:.0f}mm apart")
+    print(f"  Measured {d1:.0f}mm and {d2:.0f}mm from robot")
+    
+    #Tries normal calculation first
+    result = find_robot_position(c1, c2, d1, d2)
+    if result[0] is not None:
+        posA, posB = result
+        xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
+        heading = (b1 + b2) / 2.0
+        return xr, yr, heading
+    
+    #If that didn't work, adjust the distances
+    if d1 + d2 < wall_dist:
+        scale = (wall_dist * 1.1) / (d1 + d2)
+        d1 = d1 * scale
+        d2 = d2 * scale
+        
+        result = find_robot_position(c1, c2, d1, d2)
+        if result[0] is not None:
+            posA, posB = result
+            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
+            heading = (b1 + b2) / 2.0
+            return xr, yr, heading
+    
+    elif abs(d1 - d2) > wall_dist:
+        if d1 > d2:
+            d1 = wall_dist * 0.9 + d2
+        else:
+            d2 = wall_dist * 0.9 + d1
+        
+        result = find_robot_position(c1, c2, d1, d2)
+        if result[0] is not None:
+            posA, posB = result
+            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
+            heading = (b1 + b2) / 2.0
+            return xr, yr, heading
+    
+    #Estimates from bearings if all else fails
+    heading = (b1 + b2) / 2.0
+    
+    x1_est = c1[0] - d1 * math.cos(b1)
+    y1_est = c1[1] - d1 * math.sin(b1)
+    
+    x2_est = c2[0] - d2 * math.cos(b2)
+    y2_est = c2[1] - d2 * math.sin(b2)
+    
+    xr = (x1_est + x2_est) / 2
+    yr = (y1_est + y2_est) / 2
+    
+    return xr, yr, heading
+
+
+def get_marker_measurements(robot, marker_obj):
+    #Gets distance and bearing to a wall marker
+    dx = marker_obj.pose.position.x - robot.pose.position.x
+    dy = marker_obj.pose.position.y - robot.pose.position.y
+
+    dist = math.sqrt(dx*dx + dy*dy)
+    global_bearing = math.atan2(dy, dx)
+    robot_heading = robot.pose.rotation.angle_z.radians
+
+    rel_bearing = fix_angle(global_bearing - robot_heading)
+    return dist, rel_bearing
+
+
+def clean_up_data(data):
+    #Removes outliers from measurements
+    if len(data) < 4:
+        return data
+    
+    sorted_data = sorted(data)
+    n = len(sorted_data)
+
+    #Gets quartiles
+    q1 = sorted_data[n // 4]
+    q3 = sorted_data[3 * n // 4]
+    iqr = q3 - q1
+
+    #Removes outliers
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+    filtered = [x for x in data if lower <= x <= upper]
+
+    #Doesn't filter too much
+    if len(filtered) < len(data) * 0.5:
+        return data
+    
+    return filtered if len(filtered) > 0 else data
+
+
+def measure_wall(robot, marker_obj, num_samples=10):
+    #Takes multiple measurements to a wall and averages them
+    distances = []
+    bearings = []
+    
+    print(f"    Taking {num_samples} measurements")
+    
+    for i in range(num_samples):
+        d, b = get_marker_measurements(robot, marker_obj)
+        distances.append(d)
+        bearings.append(b)
+        time.sleep(0.05)
+    
+    #Cleans up distance outliers
+    distances = clean_up_data(distances)
+    
+    #Gets the average of the bearings using trig to handle the wraparound
+    avg_x = sum(math.cos(b) for b in bearings) / len(bearings)
+    avg_y = sum(math.sin(b) for b in bearings) / len(bearings)
+    avg_bearing = math.atan2(avg_y, avg_x)
+    
+    #Removes bearing outliers
+    diffs = [abs(fix_angle(b - avg_bearing)) for b in bearings]
+    threshold = max(sorted(diffs)[len(diffs)//2] * 2.5, math.radians(10))
+    good_bearings = [b for b, diff in zip(bearings, diffs) if diff <= threshold]
+    
+    #Gets median distance
+    final_dist = sorted(distances)[len(distances) // 2]
+    
+    #Average of the good bearings
+    final_x = sum(math.cos(b) for b in good_bearings) / len(good_bearings)
+    final_y = sum(math.sin(b) for b in good_bearings) / len(good_bearings)
+    final_bearing = math.atan2(final_y, final_x)
+    
+    print(f"    Distance: {final_dist:.0f}mm, Bearing: {math.degrees(final_bearing):.0f}°")
+    
+    return final_dist, final_bearing
+
+
+def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
+    #Does a 360 scan looking for walls
+    print("\nScanning for walls")
+    
+    initial_walls = len(marked_walls_seen)
+    
+    for step in range(18):
+        if len(marked_walls_seen) >= num_needed:
+            print(f"Found {len(marked_walls_seen)} walls, stopping scan")
+            break
+        
+        print(f"  Step {step+1}/18 - found {len(marked_walls_seen)} so far")
+        
+        if step < 17:
+            robot.turn_in_place(degrees(20)).wait_for_completed()
+            time.sleep(0.3)
+    
+    new_walls = len(marked_walls_seen) - initial_walls
+    print(f"Scan complete - found {new_walls} new walls\n")
+    
+    return len(marked_walls_seen) >= num_needed
+
+
+def scan_for_cubes(robot: cozmo.robot.Robot):
+    #Does a 360 scan looking for cubes
+    print("\nScanning for cubes")
+    
+    cubes_found = []
+    
+    for step in range(18):
+        #Checks for visible cubes
+        cube1 = robot.world.get_light_cube(cozmo.objects.LightCube1Id)
+        cube2 = robot.world.get_light_cube(cozmo.objects.LightCube2Id)
+        cube3 = robot.world.get_light_cube(cozmo.objects.LightCube3Id)
+        
+        for cube in [cube1, cube2, cube3]:
+            if cube is not None and cube.is_visible:
+                cube_pos = (cube.pose.position.x, cube.pose.position.y)
+                
+                #Checks if we already found this cube
+                already_found = False
+                for found_pos in cube_positions:
+                    dist = math.sqrt((cube_pos[0]-found_pos[0])**2 + (cube_pos[1]-found_pos[1])**2)
+                    if dist < 50:
+                        already_found = True
+                        break
+                
+                if not already_found:
+                    cube_positions.append(cube_pos)
+                    cubes_found.append(cube_pos)
+                    print(f"  Found cube at ({cube_pos[0]:.0f}, {cube_pos[1]:.0f})")
+        
+        if step < 17:
+            robot.turn_in_place(degrees(20)).wait_for_completed()
+            time.sleep(0.2)
+    
+    print(f"Scan complete - found {len(cubes_found)} new cubes\n")
+    return cubes_found
+
+
+def localize_robot(robot):
+    #Figures out where the robot is using wall measurements
+    global current_position, current_heading
+    
+    if len(marked_walls_seen) < 2:
+        print("Not enough walls to localize")
+        return False
+    
+    print("\nLocalizing robot")
+    
+    marker1 = marked_walls_seen[0]
+    marker2 = marked_walls_seen[1]
+    c1 = walls[0]
+    c2 = walls[1]
+    
+    print(f"Measuring wall 1:")
+    d1, b1 = measure_wall(robot, marker1)
+    
+    print(f"Measuring wall 2:")
+    d2, b2 = measure_wall(robot, marker2)
+    
+    xr, yr, heading = figure_out_position(c1, c2, d1, d2, b1, b2)
+    
+    current_position = (xr, yr)
+    current_heading = heading
+    
+    print(f"\nRobot position: ({xr:.0f}, {yr:.0f})mm")
+    print(f"Robot heading: {math.degrees(heading):.0f}°")
+    
+    return True
+
+
+def is_position_explored(x, y):
+    #Checks if we've already been near this position using the map
+    for map_key in map.keys():
+        if x > map_key[0] - RANGE_MAP_KEY and x < map_key[0] + RANGE_MAP_KEY and y > map_key[1] - RANGE_MAP_KEY and y < map_key[1] + RANGE_MAP_KEY:
+            return True, map_key
+    return False, None
+
+
+def is_path_blocked(start_x, start_y, end_x, end_y):
+    #Checks if there's a wall blocking the path and returns distance info
+    max_distance = 0
+    blocked = False
+    
+    for i in range(len(walls)):
+        wall_x, wall_y = walls[i]
+        
+        #Calculates distance from wall to the line segment
+        dx = end_x - start_x
+        dy = end_y - start_y
+        
+        if dx == 0 and dy == 0:
+            continue
+        
+        t = ((wall_x - start_x) * dx + (wall_y - start_y) * dy) / (dx*dx + dy*dy)
+        t = max(0, min(1, t))
+        
+        closest_x = start_x + t * dx
+        closest_y = start_y + t * dy
+        
+        dist = math.sqrt((wall_x - closest_x)**2 + (wall_y - closest_y)**2)
+        
+        #Track maximum safe distance even if path is blocked
+        if t > 0:  # Wall is ahead, not behind
+            distance_along_path = t * math.sqrt(dx*dx + dy*dy)
+            if dist < WALL_RADIUS:
+                blocked = True
+                max_distance = max(max_distance, distance_along_path - WALL_RADIUS)
+            else:
+                max_distance = max(max_distance, distance_along_path)
+    
+    return blocked, max_distance
+
+
+def choose_next_position():
+    #Picks where to explore next using map structure
+    global current_position
+    
+    x, y = current_position
+    
+    #Check if current position is already in map
+    is_seen, map_key = is_position_explored(x, y)
+    
+    if is_seen and map_key in map:
+        #We have cached reachable positions for this location
+        candidates = map[map_key]
+    else:
+        #Generate fresh candidates
+        candidates = [
+            (x + MOVE_DISTANCE, y),
+            (x - MOVE_DISTANCE, y),
+            (x, y + MOVE_DISTANCE),
+            (x, y - MOVE_DISTANCE)
+        ]
+    
+    #Track best fallback position (furthest reachable even if blocked)
+    best_fallback = None
+    max_fallback_dist = 0
+    
+    #Finds unexplored positions that aren't blocked
+    valid_positions = []
+    for pos in candidates:
+        is_explored, _ = is_position_explored(pos[0], pos[1])
+        
+        if not is_explored:
+            blocked, safe_distance = is_path_blocked(x, y, pos[0], pos[1])
+            
+            if not blocked:
+                valid_positions.append(pos)
+            elif safe_distance > max_fallback_dist:
+                #Track furthest safe point even on blocked paths
+                max_fallback_dist = safe_distance
+                direction_x = (pos[0] - x) / MOVE_DISTANCE
+                direction_y = (pos[1] - y) / MOVE_DISTANCE
+                best_fallback = (x + safe_distance * direction_x, 
+                               y + safe_distance * direction_y)
+    
+    #Return first valid unexplored position
+    if valid_positions:
+        return valid_positions[0]
+    
+    #Use fallback if we have one
+    if best_fallback and max_fallback_dist > 50:  # Minimum useful distance
+        return best_fallback
+    
+    #If all nearby positions explored, search globally
+    best_pos = None
+    best_dist = float('inf')
+    
+    for explored_key in map.keys():
+        for offset in [(MOVE_DISTANCE, 0), (-MOVE_DISTANCE, 0), 
+                       (0, MOVE_DISTANCE), (0, -MOVE_DISTANCE)]:
+            new_pos = (explored_key[0] + offset[0], explored_key[1] + offset[1])
+            
+            is_explored, _ = is_position_explored(new_pos[0], new_pos[1])
+            if not is_explored:
+                dist = math.sqrt((new_pos[0] - x)**2 + (new_pos[1] - y)**2)
+                blocked, _ = is_path_blocked(x, y, new_pos[0], new_pos[1])
+                
+                if not blocked and dist < best_dist:
+                    best_dist = dist
+                    best_pos = new_pos
+    
+    return best_pos
+
+
+def move_to_position(robot, target_x, target_y):
+    #Moves robot to target position
+    global current_position, current_heading, path_history
+    
+    print(f"\nMoving to ({target_x:.0f}, {target_y:.0f})")
+    
+    #Calculates heading to target
+    dx = target_x - current_position[0]
+    dy = target_y - current_position[1]
+    target_heading = math.atan2(dy, dx)
+    
+    #Turns to face target
+    turn_angle = fix_angle(target_heading - current_heading)
+    print(f"Turning {math.degrees(turn_angle):.0f}°")
+    robot.turn_in_place(degrees(math.degrees(turn_angle))).wait_for_completed()
+    time.sleep(0.2)
+    
+    #Moves forward
+    distance = math.sqrt(dx*dx + dy*dy)
+    print(f"Moving forward {distance:.0f}mm")
     
     try:
-        while True:
-            #Do a 360 degree scan for cubes at current position
-            robotPose = Frame2D.fromPose(robot.pose)
-            path.append((robotPose.x(), robotPose.y()))
-            is_seen, map_key = isSeen((robotPose.x(), robotPose.y()))
-            if not is_seen:
-                scan_for_cubes(robot)
-                
-                #Small pause between navigation cycles
-                time.sleep(0.5)
+        robot.go_to_pose(Pose(target_x, target_y, 0, angle_z=degrees(0))).wait_for_completed()
+        time.sleep(0.5)
+        
+        #Updates position
+        current_position = (target_x, target_y)
+        current_heading = target_heading
+        path_history.append(current_position)
+        
+        print(f"Reached ({current_position[0]:.0f}, {current_position[1]:.0f})")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to reach target: {e}")
+        return False
 
-                #Choose next position to explore (nearest to origin that we haven't visited)
-                #Remove blocked positions from possible map p
-                possible_map_positions=add_reachable_position_to_map(robot)
 
-                robotPose = Frame2D.fromPose(robot.pose)
-                path.append((robotPose.x(), robotPose.y()))
-                #Update map with positions
-                map[(robotPose.x(), robotPose.y())] = possible_map_positions
-            
-            else:
-                possible_map_positions = map[map_key]
+def plot_map():
+    #Draws the map of explored area with enhanced visualization
+    print("\nGenerating map")
+    
+    fig, ax = plt.subplots(figsize=(12, 10))
+    
+    #Draws the path
+    if len(path_history) > 1:
+        path_x = [p[0] for p in path_history]
+        path_y = [p[1] for p in path_history]
+        ax.plot(path_x, path_y, 'b-', linewidth=2, alpha=0.5, label='Path')
+    
+    #Draws explored positions with visibility circles
+    for pos in map.keys():
+        #Visibility circle
+        circle = plt.Circle(pos, RADIUS_CIRCLES, color='g', alpha=0.1, linewidth=1, edgecolor='g', linestyle='--')
+        ax.add_patch(circle)
+        #Position marker
+        ax.plot(pos[0], pos[1], 'go', markersize=8)
+    
+    #Draws walls
+    for i in range(len(walls)):
+        wall_x, wall_y = walls[i]
+        angle = walls_angles[i]
+        
+        #Draws wall as a line
+        wall_x1 = wall_x - WALL_RADIUS * math.cos(angle)
+        wall_y1 = wall_y - WALL_RADIUS * math.sin(angle)
+        wall_x2 = wall_x + WALL_RADIUS * math.cos(angle)
+        wall_y2 = wall_y + WALL_RADIUS * math.sin(angle)
+        
+        ax.plot([wall_x1, wall_x2], [wall_y1, wall_y2], 'r-', linewidth=4, label='Wall' if i == 0 else '')
+        ax.plot(wall_x, wall_y, 'rs', markersize=10, markeredgecolor='darkred', markeredgewidth=2)
+    
+    #Draws cubes
+    if len(cube_positions) > 0:
+        cube_x = [c[0] for c in cube_positions]
+        cube_y = [c[1] for c in cube_positions]
+        ax.plot(cube_x, cube_y, 'ys', markersize=15, label='Cubes', 
+                markeredgecolor='orange', markeredgewidth=2)
+    
+    #Draws current position
+    ax.plot(current_position[0], current_position[1], 'bo', markersize=15, 
+            label='Current position', markeredgecolor='darkblue', markeredgewidth=2)
+    
+    #Draws heading arrow
+    arrow_len = 100
+    dx = arrow_len * math.cos(current_heading)
+    dy = arrow_len * math.sin(current_heading)
+    ax.arrow(current_position[0], current_position[1], dx, dy, 
+             head_width=30, head_length=40, fc='blue', ec='blue')
+    
+    #Calculate and display statistics
+    elapsed = time.time() - start_time
+    total_dist = 0
+    for i in range(1, len(path_history)):
+        dx = path_history[i][0] - path_history[i-1][0]
+        dy = path_history[i][1] - path_history[i-1][1]
+        total_dist += math.sqrt(dx*dx + dy*dy)
+    
+    title = f'SLAM Map | Time: {elapsed:.0f}s | Positions: {len(map)} | '
+    title += f'Walls: {len(walls)} | Cubes: {len(cube_positions)} | Distance: {total_dist:.0f}mm'
+    
+    ax.set_xlabel('X (mm)', fontsize=12)
+    ax.set_ylabel('Y (mm)', fontsize=12)
+    ax.set_title(title, fontsize=12, fontweight='bold')
+    ax.grid(True, alpha=0.3)
+    ax.axis('equal')
+    ax.legend(loc='upper right')
+    
+    plt.tight_layout()
+    plt.savefig('/mnt/user-data/outputs/slam_map.png', dpi=300)
+    print("Map saved as slam_map.png")
+    print(f"\nStatistics:")
+    print(f"  Time: {elapsed:.1f}s")
+    print(f"  Distance travelled: {total_dist:.0f}mm")
+    print(f"  Positions explored: {len(map)}")
+    print(f"  Walls found: {len(walls)}")
+    print(f"  Cubes found: {len(cube_positions)}")
+    plt.show()
 
-            #go to next unseen position
-            target = choose_next_position(possible_map_positions)
-            
-            #Try to move to that position
-            reached = go_to_new_position(robot, target[0], target[1])
-            
-    except KeyboardInterrupt:
-        print("\nStopping")
-        robot.drive_wheels(0, 0)
-        robot.set_lift_height(0.0).wait_for_completed()
-        print_stats()
-        plt.ioff()
-        plt.show()
 
 def main(robot: cozmo.robot.Robot):
+    global current_position, current_heading, explored_positions
+    
+    print("Starting SLAM")
+    print("==============\n")
+    
+    robot.camera.image_stream_enabled = True
     create_cozmo_walls(robot)
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
+    
     time.sleep(1)
-    robot.set_head_angle(Angle(0)).wait_for_completed
+    robot.set_head_angle(Angle(0)).wait_for_completed()
     time.sleep(1)
-    explore(robot)
+    
+    #Initial scan for walls
+    scan_for_walls(robot, num_needed=2)
+    
+    if len(marked_walls_seen) < 2:
+        print("ERROR: Need at least 2 walls for localization")
+        return
+    
+    #Initial localization
+    if not localize_robot(robot):
+        print("ERROR: Could not localize robot")
+        return
+    
+    #Main exploration loop
+    max_positions = 10
+    positions_explored = 0
+    
+    try:
+        while positions_explored < max_positions:
+            print(f"\n{'='*50}")
+            print(f"Exploration step {positions_explored + 1}/{max_positions}")
+            print(f"{'='*50}")
+            
+            #Check if current position is already in map
+            is_seen, map_key = is_position_explored(current_position[0], current_position[1])
+            
+            if not is_seen:
+                #New position - mark as explored and scan
+                print(f"New position ({current_position[0]:.0f}, {current_position[1]:.0f})")
+                
+                #Generate candidate positions for this location
+                x, y = current_position
+                candidates = [
+                    (x + MOVE_DISTANCE, y),
+                    (x - MOVE_DISTANCE, y),
+                    (x, y + MOVE_DISTANCE),
+                    (x, y - MOVE_DISTANCE)
+                ]
+                
+                #Filter candidates by checking for obstacles
+                valid_candidates = []
+                for pos in candidates:
+                    blocked, _ = is_path_blocked(x, y, pos[0], pos[1])
+                    if not blocked:
+                        valid_candidates.append(pos)
+                
+                #Store in map
+                map[(current_position[0], current_position[1])] = valid_candidates
+                positions_explored += 1
+                
+                #Scans for new things
+                scan_for_walls(robot, num_needed=2)
+                scan_for_cubes(robot)
+                
+                #Re-localizes if we found new walls
+                if len(marked_walls_seen) >= 2:
+                    localize_robot(robot)
+            else:
+                #Already been here, use cached candidates
+                print(f"Revisiting known position near ({map_key[0]:.0f}, {map_key[1]:.0f})")
+            
+            #Picks next position
+            next_pos = choose_next_position()
+            
+            if next_pos is None:
+                print("\nNo more positions to explore")
+                break
+            
+            #Moves to next position
+            if move_to_position(robot, next_pos[0], next_pos[1]):
+                path_history.append(current_position)
+            else:
+                print("Failed to reach position, trying another")
+            
+            time.sleep(0.5)
+        
+        print("\n" + "="*50)
+        print("Exploration complete")
+        print("="*50)
+        
+        plot_map()
+        
+    except KeyboardInterrupt:
+        print("\n\nStopping exploration")
+        robot.drive_wheels(0, 0)
+        plot_map()
 
 
-cozmo.run_program(main)
+if __name__ == "__main__":
+    cozmo.run_program(main)
