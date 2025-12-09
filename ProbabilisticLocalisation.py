@@ -59,19 +59,16 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
     
     cozmo_walls = []
     
-    print("Creating custom walls using the synchronous method")
+    print("Creating custom walls")
     
     for i in range(0, 8):
         wall = robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True)
         cozmo_walls.append(wall)
-        print(f"  Defined wall {i+1}: {types[i]} with marker {markers[i]}")
     
     for i in range(8, 16):
         wall = robot.world.define_custom_wall(types[i], markers[i], 300, 60, 50, 50, True)
         cozmo_walls.append(wall)
-        print(f"  Defined wall {i+1}: {types[i]} with marker {markers[i]}")
     
-    print(f"Total walls defined: {len(cozmo_walls)}")
     return cozmo_walls
 
 
@@ -82,16 +79,10 @@ def add_wall(wall_x, wall_y):
 def handle_object_observed(evt, **kw):
     global walls, marked_walls_seen, walls_angles, wall_assignments
     
-    print(f"Debug: Object observed: {type(evt.obj).__name__}")
-    
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
             full_type = str(evt.obj.object_type)
-            print(f"Debug: Full object type: '{full_type}'")
-            
             marker_type = full_type.split('.')[-1]
-            print(f"Debug: Extracted marker type: '{marker_type}'")
-            print(f"Debug: Available mappings: {list(MARKER_TO_WALL.keys())}")
             
             if marker_type in MARKER_TO_WALL:
                 wall_key = MARKER_TO_WALL[marker_type]
@@ -100,15 +91,10 @@ def handle_object_observed(evt, **kw):
                 marked_walls_seen.append(evt.obj)
                 wall_assignments[evt.obj] = (wall_key, fixed_position)
                 
-                print(f"*** WALL DETECTED: {marker_type} ***")
-                print(f"    Assigned to: {wall_key}")
-                print(f"    Fixed position: {fixed_position}")
-                
+                print(f"Found wall: {marker_type} at {fixed_position}")
                 add_wall(fixed_position[0], fixed_position[1])
             else:
-                print(f"Warning: Detected marker '{marker_type}' but it's not in our mapping")
-                print(f"Warning: Add this to MARKER_TO_WALL if you want to use it")
-                
+                #Assigns it to the next available wall
                 if len(marked_walls_seen) < len(WALL_POSITIONS):
                     wall_keys = list(WALL_POSITIONS.keys())
                     wall_key = wall_keys[len(marked_walls_seen)]
@@ -116,12 +102,11 @@ def handle_object_observed(evt, **kw):
                     
                     marked_walls_seen.append(evt.obj)
                     wall_assignments[evt.obj] = (wall_key, fixed_position)
-                    
-                    print(f"Assigning {marker_type} to {wall_key} at {fixed_position}")
                     add_wall(fixed_position[0], fixed_position[1])
 
 
-def normalise_angle(angle):
+def fix_angle(angle):
+    #Keeps angle between -pi and pi
     while angle > math.pi:
         angle -= 2 * math.pi
     while angle < -math.pi:
@@ -129,109 +114,109 @@ def normalise_angle(angle):
     return angle
 
 
-def triangulate_from_two_markers(c1, c2, d1, d2):
+def find_robot_position(c1, c2, d1, d2):
     x1, y1 = c1
     x2, y2 = c2
 
     dx = x2 - x1
     dy = y2 - y1
-    d = math.hypot(dx, dy)
+    wall_distance = math.sqrt(dx*dx + dy*dy)
 
-    if d == 0:
-        raise ValueError("Marker positions cannot be identical.")
-    if d > d1 + d2:
-        raise ValueError("No intersection: circles too far apart.")
-    if d < abs(d1 - d2):
-        raise ValueError("No intersection: one circle inside another.")
+    if wall_distance == 0:
+        return None, None
+    
+    #Checks if circles can intersect
+    if wall_distance > d1 + d2 or wall_distance < abs(d1 - d2):
+        return None, None
 
-    a = (d1**2 - d2**2 + d**2) / (2 * d)
-    h = math.sqrt(abs(d1**2 - a**2))
+    a = (d1*d1 - d2*d2 + wall_distance*wall_distance) / (2 * wall_distance)
+    h_squared = d1*d1 - a*a
+    if h_squared < 0:
+        return None, None
+    h = math.sqrt(h_squared)
 
-    x3 = x1 + a * dx / d
-    y3 = y1 + a * dy / d
+    x3 = x1 + a * dx / wall_distance
+    y3 = y1 + a * dy / wall_distance
 
-    rx1 = x3 + h * (dy / d)
-    ry1 = y3 - h * (dx / d)
+    #Two possible positions
+    rx1 = x3 + h * (dy / wall_distance)
+    ry1 = y3 - h * (dx / wall_distance)
 
-    rx2 = x3 - h * (dy / d)
-    ry2 = y3 + h * (dx / d)
+    rx2 = x3 - h * (dy / wall_distance)
+    ry2 = y3 + h * (dx / wall_distance)
 
     return (rx1, ry1), (rx2, ry2)
 
 
-def choose_correct_position(c1, c2, posA, posB, bearing1, bearing2):
-    def bearing_error(robot_pos):
-        xr, yr = robot_pos
-        pred_b1 = math.atan2(c1[1] - yr, c1[0] - xr)
-        pred_b2 = math.atan2(c2[1] - yr, c2[0] - xr)
+def pick_right_position(c1, c2, posA, posB, bearing1, bearing2):
+    #Checks which position matches the bearings better
+    xr, yr = posA
+    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
+    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
+    error1 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
 
-        err1 = normalise_angle(pred_b1 - bearing1)
-        err2 = normalise_angle(pred_b2 - bearing2)
-        return abs(err1) + abs(err2)
+    xr, yr = posB
+    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
+    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
+    error2 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
 
-    errA = bearing_error(posA)
-    errB = bearing_error(posB)
+    if error1 < error2:
+        return posA
+    else:
+        return posB
 
-    return posA if errA < errB else posB
 
-
-def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
+def figure_out_position(c1, c2, d1, d2, b1, b2):
     x1, y1 = c1
     x2, y2 = c2
-    wall_dist = math.hypot(x2 - x1, y2 - y1)
+    wall_dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
     
-    print(f"\nTriangulation Attempting triangulation")
-    print(f"  Wall separation: {wall_dist:.1f}mm")
-    print(f"  Measured distances: d1={d1:.1f}mm, d2={d2:.1f}mm")
-    print(f"  Sum of distances: {d1 + d2:.1f}mm")
-    print(f"  Difference of distances: {abs(d1 - d2):.1f}mm")
+    print(f"\nTrying to find position...")
+    print(f"  Walls are {wall_dist:.0f}mm apart")
+    print(f"  Measured {d1:.0f}mm and {d2:.0f}mm from robot")
     
-    try:
-        posA, posB = triangulate_from_two_markers(c1, c2, d1, d2)
-        xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
+    #Tries normal calculation first
+    result = find_robot_position(c1, c2, d1, d2)
+    if result[0] is not None:
+        posA, posB = result
+        xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
         heading = (b1 + b2) / 2.0
-        print(f"Direct triangulation worked")
-        return xr, yr, heading, "direct"
-    except ValueError as e:
-        print(f"Fallback Direct triangulation failed: {e}")
+        print(f"  Got position directly")
+        return xr, yr, heading
     
+    print(f"  Direct calculation didn't work, adjusting...")
+    
+    #If distances are too small, it makes them bigger
     if d1 + d2 < wall_dist:
         scale = (wall_dist * 1.1) / (d1 + d2)
-        d1_scaled = d1 * scale
-        d2_scaled = d2 * scale
-        print(f"Fallback Strategy 2: Scaling distances up by {scale:.2f}x")
-        print(f"  New distances: d1={d1_scaled:.1f}mm, d2={d2_scaled:.1f}mm")
+        d1 = d1 * scale
+        d2 = d2 * scale
+        print(f"  Scaled up distances by {scale:.2f}x")
         
-        try:
-            posA, posB = triangulate_from_two_markers(c1, c2, d1_scaled, d2_scaled)
-            xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
+        result = find_robot_position(c1, c2, d1, d2)
+        if result[0] is not None:
+            posA, posB = result
+            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
             heading = (b1 + b2) / 2.0
-            print(f"Scaled triangulation worked")
-            return xr, yr, heading, "scaled_up"
-        except ValueError:
-            print(f"Fallback Strategy 2 failed")
+            return xr, yr, heading
     
+    #If one distance is way bigger than the other, it fixes it
     elif abs(d1 - d2) > wall_dist:
-        larger = max(d1, d2)
-        smaller = min(d1, d2)
-        new_larger = wall_dist * 0.9 + smaller
-        scale = new_larger / larger
-        d1_scaled = d1 * scale if d1 > d2 else d1
-        d2_scaled = d2 * scale if d2 > d1 else d2
-        print(f"Fallback Strategy 2: Reducing distance difference")
-        print(f"  New distances: d1={d1_scaled:.1f}mm, d2={d2_scaled:.1f}mm")
+        if d1 > d2:
+            d1 = wall_dist * 0.9 + d2
+        else:
+            d2 = wall_dist * 0.9 + d1
+        print(f"  Adjusted distance difference")
         
-        try:
-            posA, posB = triangulate_from_two_markers(c1, c2, d1_scaled, d2_scaled)
-            xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
+        result = find_robot_position(c1, c2, d1, d2)
+        if result[0] is not None:
+            posA, posB = result
+            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
             heading = (b1 + b2) / 2.0
-            print(f"Adjusted triangulation worked")
-            return xr, yr, heading, "adjusted"
-        except ValueError:
-            print(f"Fallback Strategy 2 failed")
+            return xr, yr, heading
     
-    print(f"Fallback Strategy 3: Using bearing-based position estimation")
-    
+    #Estimates from bearings
+    print(f"  Using bearing estimate")
     heading = (b1 + b2) / 2.0
     
     x1_est = c1[0] - d1 * math.cos(b1)
@@ -243,100 +228,87 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
     xr = (x1_est + x2_est) / 2
     yr = (y1_est + y2_est) / 2
     
-    print(f"Bearing-based estimation complete")
-    print(f"  Position from wall1: ({x1_est:.1f}, {y1_est:.1f})")
-    print(f"  Position from wall2: ({x2_est:.1f}, {y2_est:.1f})")
-    print(f"  Averaged position: ({xr:.1f}, {yr:.1f})")
-    
-    return xr, yr, heading, "bearing_based"
+    return xr, yr, heading
 
 
 def localise_robot(c1, c2, d1, d2, b1, b2):
-    xr, yr, heading, method = triangulate_with_fallback(c1, c2, d1, d2, b1, b2)
-    return xr, yr, heading
+    return figure_out_position(c1, c2, d1, d2, b1, b2)
 
 
 def get_marker_measurements(robot, marker_obj):
     dx = marker_obj.pose.position.x - robot.pose.position.x
     dy = marker_obj.pose.position.y - robot.pose.position.y
 
-    dist = math.hypot(dx, dy)
+    dist = math.sqrt(dx*dx + dy*dy)
     global_bearing = math.atan2(dy, dx)
     robot_heading = robot.pose.rotation.angle_z.radians
 
-    rel_bearing = normalise_angle(global_bearing - robot_heading)
+    rel_bearing = fix_angle(global_bearing - robot_heading)
     return dist, rel_bearing
 
 
-def remove_outliers_iqr(data):
+def clean_up_data(data):
     if len(data) < 4:
         return data
     
     sorted_data = sorted(data)
     n = len(sorted_data)
 
-    q1_idx = n // 4
-    q3_idx = 3 * n // 4
-    
-    q1 = sorted_data[q1_idx]
-    q3 = sorted_data[q3_idx]
+    #Gets quartiles
+    q1 = sorted_data[n // 4]
+    q3 = sorted_data[3 * n // 4]
     iqr = q3 - q1
 
-    lower_bound = q1 - 1.5 * iqr
-    upper_bound = q3 + 1.5 * iqr
+    #Removes outliers
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+    filtered = [x for x in data if lower <= x <= upper]
 
-    filtered = [x for x in data if lower_bound <= x <= upper_bound]
-
+    #Doesn't filter too much
     if len(filtered) < len(data) * 0.5:
         return data
     
     return filtered if len(filtered) > 0 else data
 
 
-def filtered_measurements(robot, marker_obj, n=10):
-    dists = []
-    bears = []
+def measure_wall(robot, marker_obj, num_samples=10):
+    distances = []
+    bearings = []
     
-    print(f"    Collecting {n} samples", end='', flush=True)
+    print(f"    Taking {num_samples} measurements...", end='', flush=True)
     
-    for i in range(n):
+    for i in range(num_samples):
         d, b = get_marker_measurements(robot, marker_obj)
-        dists.append(d)
-        bears.append(b)
+        distances.append(d)
+        bearings.append(b)
         time.sleep(0.05)
     
-    print(" Done")
+    print(" done")
     
-    dists_filtered = remove_outliers_iqr(dists)
+    #Cleans up distance outliers
+    distances = clean_up_data(distances)
     
-    bears_x = [math.cos(b) for b in bears]
-    bears_y = [math.sin(b) for b in bears]
-    
-    avg_x = sum(bears_x) / len(bears_x)
-    avg_y = sum(bears_y) / len(bears_y)
+    #Gets the average of the bearings using trig to handle the wraparound
+    avg_x = sum(math.cos(b) for b in bearings) / len(bearings)
+    avg_y = sum(math.sin(b) for b in bearings) / len(bearings)
     avg_bearing = math.atan2(avg_y, avg_x)
     
-    angular_diffs = [abs(normalise_angle(b - avg_bearing)) for b in bears]
-    median_diff = sorted(angular_diffs)[len(angular_diffs) // 2]
+    #Removes bearing outliers
+    diffs = [abs(fix_angle(b - avg_bearing)) for b in bearings]
+    threshold = max(sorted(diffs)[len(diffs)//2] * 2.5, math.radians(10))
+    good_bearings = [b for b, diff in zip(bearings, diffs) if diff <= threshold]
     
-    threshold = max(median_diff * 2.5, math.radians(10))
-    bears_filtered = [b for b, diff in zip(bears, angular_diffs) if diff <= threshold]
+    #Gest median distance
+    final_dist = sorted(distances)[len(distances) // 2]
     
-    median_d = sorted(dists_filtered)[len(dists_filtered) // 2]
-
-    bears_filtered_x = [math.cos(b) for b in bears_filtered]
-    bears_filtered_y = [math.sin(b) for b in bears_filtered]
-    final_x = sum(bears_filtered_x) / len(bears_filtered_x)
-    final_y = sum(bears_filtered_y) / len(bears_filtered_y)
-    median_b = math.atan2(final_y, final_x)
+    #Average of the good bearings
+    final_x = sum(math.cos(b) for b in good_bearings) / len(good_bearings)
+    final_y = sum(math.sin(b) for b in good_bearings) / len(good_bearings)
+    final_bearing = math.atan2(final_y, final_x)
     
-    outliers_dist = n - len(dists_filtered)
-    outliers_bear = n - len(bears_filtered)
-    print(f"    Filtered out {outliers_dist} distance outliers, {outliers_bear} bearing outliers")
-    print(f"    Distance: {min(dists):.1f} to {max(dists):.1f}mm → median: {median_d:.1f}mm")
-    print(f"    Bearing: {math.degrees(min(bears)):.1f}° to {math.degrees(max(bears)):.1f}° → filtered: {math.degrees(median_b):.1f}°")
+    print(f"    Distance: {final_dist:.0f}mm, Bearing: {math.degrees(final_bearing):.0f}°")
     
-    return median_d, median_b
+    return final_dist, final_bearing
 
 
 def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
@@ -347,69 +319,47 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     walls_angles.clear()
     wall_assignments.clear()
     
-    steps = 18
-    step_angle = 20
+    print("\nScanning for walls...")
     
-    print("Scanning for walls")
-    print(f"Looking for {num_needed} wall markers")
-    print(f"Fixed wall positions: {WALL_POSITIONS}")
-    print("Performing 360° scan\n")
-    
-    for step in range(steps):
+    #Does a 360 scan
+    for step in range(18):
         if len(marked_walls_seen) >= num_needed:
-            print(f"\nFound {len(marked_walls_seen)} walls - stopping scan early")
+            print(f"Found {len(marked_walls_seen)} walls, stopping scan")
             break
         
-        print(f"Step {step+1}/{steps} - Walls found: {len(marked_walls_seen)}")
+        print(f"  Step {step+1}/18 - found {len(marked_walls_seen)} so far")
         
-        if step < steps - 1:
-            robot.turn_in_place(degrees(step_angle)).wait_for_completed()
+        if step < 17:
+            robot.turn_in_place(degrees(20)).wait_for_completed()
             time.sleep(0.3)
     
-    print(f"SCAN COMPLETE - Found {len(marked_walls_seen)} walls")
+    print(f"Scan complete - found {len(marked_walls_seen)} walls\n")
     
     return len(marked_walls_seen) >= num_needed
 
 
 def main(robot: cozmo.robot.Robot):
-    print("Triangulation Localisation With Fixed Markers + Robust Filtering")
-    print(f"\nFixed Wall Positions:")
+    print("Robot Localisation Using Wall Markers")
+    print(f"\nWall positions:")
     for wall_key, pos in WALL_POSITIONS.items():
-        print(f"  {wall_key}: ({pos[0]}, {pos[1]}) mm")
-    print("\nMarker Mapping:")
-    for marker_type, wall_key in MARKER_TO_WALL.items():
-        pos = WALL_POSITIONS[wall_key]
-        print(f"  {marker_type} -> {wall_key} at ({pos[0]}, {pos[1]})")
+        print(f"  {wall_key}: {pos}")
     
     robot.camera.image_stream_enabled = True
-    print("Camera enabled")
-    
     create_cozmo_walls(robot)
-    
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
-    print("Event handler registered")
     
-    print("Waiting for initialisation")
     time.sleep(1)
-    
     robot.set_head_angle(Angle(0)).wait_for_completed()
-    print("Head angle set")
-    
     time.sleep(1)
     
-    success = scan_for_walls(robot, num_needed=2)
+    #Looks for walls
+    found_walls = scan_for_walls(robot, num_needed=2)
     
-    if not success or len(marked_walls_seen) < 2:
-        print("ERROR: Could not find 2 walls")
-        print(f"Walls found: {len(marked_walls_seen)}")
-        if len(marked_walls_seen) > 0:
-            print("Detected walls:")
-            for i, wall in enumerate(marked_walls_seen):
-                wall_key, pos = wall_assignments[wall]
-                print(f"  {i+1}. {wall_key} at fixed position {pos}")
+    if not found_walls or len(marked_walls_seen) < 2:
+        print(f"ERROR: Only found {len(marked_walls_seen)} walls, need 2")
         return
     
-    print("Performing triangulation with filtering")
+    print("Measuring walls...")
     
     marker1 = marked_walls_seen[0]
     marker2 = marked_walls_seen[1]
@@ -419,46 +369,34 @@ def main(robot: cozmo.robot.Robot):
     wall1_key, wall1_pos = wall_assignments[marker1]
     wall2_key, wall2_pos = wall_assignments[marker2]
     
-    print(f"\nUsing walls:")
-    print(f"  {wall1_key}: Fixed at ({c1[0]:.1f}, {c1[1]:.1f})")
-    print(f"  {wall2_key}: Fixed at ({c2[0]:.1f}, {c2[1]:.1f})")
+    print(f"\nUsing:")
+    print(f"  {wall1_key} at {c1}")
+    print(f"  {wall2_key} at {c2}")
     
-    print(f"\nMeasuring {wall1_key} with filtering")
-    d1, b1 = filtered_measurements(robot, marker1, n=10)
+    print(f"\nMeasuring {wall1_key}:")
+    d1, b1 = measure_wall(robot, marker1)
     
-    print(f"\nMeasuring {wall2_key} with filtering")
-    d2, b2 = filtered_measurements(robot, marker2, n=10)
+    print(f"\nMeasuring {wall2_key}:")
+    d2, b2 = measure_wall(robot, marker2)
     
-    print(f"\nFiltered Measurements:")
-    print(f"  {wall1_key}: dist={d1:.1f}mm, bearing={math.degrees(b1):.1f}°")
-    print(f"  {wall2_key}: dist={d2:.1f}mm, bearing={math.degrees(b2):.1f}°")
+    xr, yr, heading = figure_out_position(c1, c2, d1, d2, b1, b2)
     
-    xr, yr, heading, method = triangulate_with_fallback(c1, c2, d1, d2, b1, b2)
+    print("\n=== Results ===")
+    print(f"Robot position: ({xr:.0f}, {yr:.0f})mm")
+    print(f"Robot heading: {math.degrees(heading):.0f}°")
     
-    print("Triangulation Results")
-    print(f"Method used: {method}")
-    print(f"Calculated Robot Position: ({xr:.1f}, {yr:.1f}) mm")
-    print(f"Calculated Robot Heading: {heading:.3f} rad ({math.degrees(heading):.1f}°)")
+    print("\nCozmo's internal estimate:")
+    print(f"Position: ({robot.pose.position.x:.0f}, {robot.pose.position.y:.0f})mm")
+    print(f"Heading: {robot.pose.rotation.angle_z.degrees:.0f}°")
     
-    print("COZMO INTERNAL POSE (for comparison)")
-    print(f"Internal Position: ({robot.pose.position.x:.1f}, {robot.pose.position.y:.1f}) mm")
-    print(f"Internal Heading: {robot.pose.rotation.angle_z.radians:.3f} rad ({robot.pose.rotation.angle_z.degrees:.1f}°)")
-    
+    #Calculates error
     error_x = abs(xr - robot.pose.position.x)
     error_y = abs(yr - robot.pose.position.y)
-    error_dist = math.hypot(error_x, error_y)
-    error_heading = abs(normalise_angle(heading - robot.pose.rotation.angle_z.radians))
+    error_dist = math.sqrt(error_x*error_x + error_y*error_y)
+    error_heading = abs(fix_angle(heading - robot.pose.rotation.angle_z.radians))
     
-    print("Localisation Error")
-    print(f"Position error: {error_dist:.1f} mm")
-    print(f"  X error: {error_x:.1f} mm")
-    print(f"  Y error: {error_y:.1f} mm")
-    print(f"Heading error: {math.degrees(error_heading):.1f}°")
-    
-    if method != "direct":
-        print("\nDirect triangulation failed\n")
-    else:
-        print("\nDirect triangulation succeeded\n")
+    print(f"\nPosition error: {error_dist:.0f}mm")
+    print(f"Heading error: {math.degrees(error_heading):.0f}°\n")
 
 
 if __name__ == "__main__":
