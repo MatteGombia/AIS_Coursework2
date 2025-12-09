@@ -229,29 +229,45 @@ def is_path_blocked(start_f: Frame2D, end_f, obstacles_list, clearance_mm=50.0):
             return True
     return False
     
-def add_reachable_position_to_map(robot: cozmo.robot.Robot):
-    robotPose = Frame2D.fromPose(robot.pose)
+def add_reachable_position_to_map(robot: cozmo.robot.Robot, current_position):
+    
     possible_map_positions = [
-        (robotPose.x() + MOVE_DISTANCE, robotPose.y()),
-        (robotPose.x() - MOVE_DISTANCE, robotPose.y()),
-        (robotPose.x(), robotPose.y() + MOVE_DISTANCE),
-        (robotPose.x(), robotPose.y() - MOVE_DISTANCE)
+        (current_position[0] + MOVE_DISTANCE, current_position[1]),
+        (current_position[0] - MOVE_DISTANCE, current_position[1]),
+        (current_position[0], current_position[1] + MOVE_DISTANCE),
+        (current_position[0], current_position[1] - MOVE_DISTANCE)
     ]
+    max_distance = 0  # Max distance Cozmo can travel in one go
+    default_position = None
+    valid_positions = []
     for position in possible_map_positions:
-        blocked = is_path_blocked(robotPose, position, walls, clearance_mm=WALL_RADIUS)
+        blocked, distance = is_path_blocked(current_position, position, walls, clearance_mm=WALL_RADIUS)
+        
+        if distance is not None and distance > max_distance:
+            max_distance = distance
+            default_position = position
+
         if blocked:
             print("Path to position %s is BLOCKED by an obstacle." % str(position))
-            possible_map_positions.remove(position)
+            continue
+        
+        valid_positions.append(position)
 
-    return possible_map_positions
+    if default_position is not None and len(valid_positions) == 0:
+        valid_positions.append(default_position)
+
+    return valid_positions
+
+def isSeen(position):
+    for map_key in map.keys():
+            if position[0] > map_key[0]-RANGE_MAP_KEY and position[0] < map_key[0]+RANGE_MAP_KEY and position[1] > map_key[1]-RANGE_MAP_KEY and position[1] < map_key[1]+RANGE_MAP_KEY:
+                return True, map_key
+    return False, None
 
 def choose_next_position(possible_map_positions):
     for position in possible_map_positions:
-        position_seen = False
         print("Possible position to explore: " + str(position))
-        for map_key in map.keys():
-            if position[0] > map_key[0]-RANGE_MAP_KEY and position[0] < map_key[0]+RANGE_MAP_KEY and position[1] > map_key[1]-RANGE_MAP_KEY and position[1] < map_key[1]+RANGE_MAP_KEY:
-                position_seen = True
+        position_seen, _ = isSeen(position)
         if(not position_seen):
             return position
     return possible_map_positions[0]
@@ -281,20 +297,24 @@ def explore(robot: cozmo.robot.Robot):
             #Do a 360 degree scan for cubes at current position
             robotPose = Frame2D.fromPose(robot.pose)
             path.append((robotPose.x(), robotPose.y()))
+            is_seen, map_key = isSeen((robotPose.x(), robotPose.y()))
+            if not is_seen:
+                scan_for_cubes(robot)
+                
+                #Small pause between navigation cycles
+                time.sleep(0.5)
 
-            scan_for_cubes(robot)
+                #Choose next position to explore (nearest to origin that we haven't visited)
+                #Remove blocked positions from possible map p
+                possible_map_positions=add_reachable_position_to_map(robot)
+
+                robotPose = Frame2D.fromPose(robot.pose)
+                path.append((robotPose.x(), robotPose.y()))
+                #Update map with positions
+                map[(robotPose.x(), robotPose.y())] = possible_map_positions
             
-            #Small pause between navigation cycles
-            time.sleep(0.5)
-
-            #Choose next position to explore (nearest to origin that we haven't visited)
-            #Remove blocked positions from possible map p
-            possible_map_positions=add_reachable_position_to_map(robot)
-
-            robotPose = Frame2D.fromPose(robot.pose)
-            path.append((robotPose.x(), robotPose.y()))
-            #Update map with positions
-            map[(robotPose.x(), robotPose.y())] = possible_map_positions
+            else:
+                possible_map_positions = map[map_key]
 
             #go to next unseen position
             target = choose_next_position(possible_map_positions)
