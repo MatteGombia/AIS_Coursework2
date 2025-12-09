@@ -59,7 +59,7 @@ def create_cozmo_walls(robot: cozmo.robot.Robot):
     
     cozmo_walls = []
     
-    print("Creating custom walls (synchronous method)...")
+    print("Creating custom walls using the synchronous method")
     
     for i in range(0, 8):
         wall = robot.world.define_custom_wall(types[i], markers[i], 200, 60, 50, 50, True)
@@ -82,16 +82,16 @@ def add_wall(wall_x, wall_y):
 def handle_object_observed(evt, **kw):
     global walls, marked_walls_seen, walls_angles, wall_assignments
     
-    print(f"[DEBUG] Object observed: {type(evt.obj).__name__}")
+    print(f"Debug: Object observed: {type(evt.obj).__name__}")
     
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
             full_type = str(evt.obj.object_type)
-            print(f"[DEBUG] Full object type: '{full_type}'")
+            print(f"Debug: Full object type: '{full_type}'")
             
             marker_type = full_type.split('.')[-1]
-            print(f"[DEBUG] Extracted marker type: '{marker_type}'")
-            print(f"[DEBUG] Available mappings: {list(MARKER_TO_WALL.keys())}")
+            print(f"Debug: Extracted marker type: '{marker_type}'")
+            print(f"Debug: Available mappings: {list(MARKER_TO_WALL.keys())}")
             
             if marker_type in MARKER_TO_WALL:
                 wall_key = MARKER_TO_WALL[marker_type]
@@ -106,8 +106,8 @@ def handle_object_observed(evt, **kw):
                 
                 add_wall(fixed_position[0], fixed_position[1])
             else:
-                print(f"[WARNING] Detected marker '{marker_type}' but it's not in our mapping")
-                print(f"[WARNING] Add this to MARKER_TO_WALL if you want to use it")
+                print(f"Warning: Detected marker '{marker_type}' but it's not in our mapping")
+                print(f"Warning: Add this to MARKER_TO_WALL if you want to use it")
                 
                 if len(marked_walls_seen) < len(WALL_POSITIONS):
                     wall_keys = list(WALL_POSITIONS.keys())
@@ -117,7 +117,7 @@ def handle_object_observed(evt, **kw):
                     marked_walls_seen.append(evt.obj)
                     wall_assignments[evt.obj] = (wall_key, fixed_position)
                     
-                    print(f"[AUTO-ASSIGN] Assigning {marker_type} to {wall_key} at {fixed_position}")
+                    print(f"Assigning {marker_type} to {wall_key} at {fixed_position}")
                     add_wall(fixed_position[0], fixed_position[1])
 
 
@@ -180,7 +180,7 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
     x2, y2 = c2
     wall_dist = math.hypot(x2 - x1, y2 - y1)
     
-    print(f"\n[TRIANGULATION] Attempting triangulation...")
+    print(f"\nTriangulation Attempting triangulation")
     print(f"  Wall separation: {wall_dist:.1f}mm")
     print(f"  Measured distances: d1={d1:.1f}mm, d2={d2:.1f}mm")
     print(f"  Sum of distances: {d1 + d2:.1f}mm")
@@ -190,26 +190,26 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
         posA, posB = triangulate_from_two_markers(c1, c2, d1, d2)
         xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
         heading = (b1 + b2) / 2.0
-        print(f"[SUCCESS] Direct triangulation worked!")
+        print(f"Direct triangulation worked")
         return xr, yr, heading, "direct"
     except ValueError as e:
-        print(f"[FALLBACK] Direct triangulation failed: {e}")
+        print(f"Fallback Direct triangulation failed: {e}")
     
     if d1 + d2 < wall_dist:
         scale = (wall_dist * 1.1) / (d1 + d2)
         d1_scaled = d1 * scale
         d2_scaled = d2 * scale
-        print(f"[FALLBACK] Strategy 2: Scaling distances up by {scale:.2f}x")
+        print(f"Fallback Strategy 2: Scaling distances up by {scale:.2f}x")
         print(f"  New distances: d1={d1_scaled:.1f}mm, d2={d2_scaled:.1f}mm")
         
         try:
             posA, posB = triangulate_from_two_markers(c1, c2, d1_scaled, d2_scaled)
             xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
             heading = (b1 + b2) / 2.0
-            print(f"[SUCCESS] Scaled triangulation worked!")
+            print(f"Scaled triangulation worked")
             return xr, yr, heading, "scaled_up"
         except ValueError:
-            print(f"[FALLBACK] Strategy 2 failed")
+            print(f"Fallback Strategy 2 failed")
     
     elif abs(d1 - d2) > wall_dist:
         larger = max(d1, d2)
@@ -218,19 +218,19 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
         scale = new_larger / larger
         d1_scaled = d1 * scale if d1 > d2 else d1
         d2_scaled = d2 * scale if d2 > d1 else d2
-        print(f"[FALLBACK] Strategy 2: Reducing distance difference")
+        print(f"Fallback Strategy 2: Reducing distance difference")
         print(f"  New distances: d1={d1_scaled:.1f}mm, d2={d2_scaled:.1f}mm")
         
         try:
             posA, posB = triangulate_from_two_markers(c1, c2, d1_scaled, d2_scaled)
             xr, yr = choose_correct_position(c1, c2, posA, posB, b1, b2)
             heading = (b1 + b2) / 2.0
-            print(f"[SUCCESS] Adjusted triangulation worked!")
+            print(f"Adjusted triangulation worked")
             return xr, yr, heading, "adjusted"
         except ValueError:
-            print(f"[FALLBACK] Strategy 2 failed")
+            print(f"Fallback Strategy 2 failed")
     
-    print(f"[FALLBACK] Strategy 3: Using bearing-based position estimation")
+    print(f"Fallback Strategy 3: Using bearing-based position estimation")
     
     heading = (b1 + b2) / 2.0
     
@@ -243,7 +243,7 @@ def triangulate_with_fallback(c1, c2, d1, d2, b1, b2):
     xr = (x1_est + x2_est) / 2
     yr = (y1_est + y2_est) / 2
     
-    print(f"[SUCCESS] Bearing-based estimation complete")
+    print(f"Bearing-based estimation complete")
     print(f"  Position from wall1: ({x1_est:.1f}, {y1_est:.1f})")
     print(f"  Position from wall2: ({x2_est:.1f}, {y2_est:.1f})")
     print(f"  Averaged position: ({xr:.1f}, {yr:.1f})")
@@ -297,7 +297,7 @@ def filtered_measurements(robot, marker_obj, n=10):
     dists = []
     bears = []
     
-    print(f"    Collecting {n} samples...", end='', flush=True)
+    print(f"    Collecting {n} samples", end='', flush=True)
     
     for i in range(n):
         d, b = get_marker_measurements(robot, marker_obj)
@@ -305,7 +305,7 @@ def filtered_measurements(robot, marker_obj, n=10):
         bears.append(b)
         time.sleep(0.05)
     
-    print(" Done!")
+    print(" Done")
     
     dists_filtered = remove_outliers_iqr(dists)
     
@@ -351,13 +351,13 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     step_angle = 20
     
     print("Scanning for walls")
-    print(f"Looking for {num_needed} wall markers...")
+    print(f"Looking for {num_needed} wall markers")
     print(f"Fixed wall positions: {WALL_POSITIONS}")
-    print("Performing 360° scan...\n")
+    print("Performing 360° scan\n")
     
     for step in range(steps):
         if len(marked_walls_seen) >= num_needed:
-            print(f"\n✓ Found {len(marked_walls_seen)} walls - stopping scan early")
+            print(f"\nFound {len(marked_walls_seen)} walls - stopping scan early")
             break
         
         print(f"Step {step+1}/{steps} - Walls found: {len(marked_walls_seen)}")
@@ -382,18 +382,18 @@ def main(robot: cozmo.robot.Robot):
         print(f"  {marker_type} -> {wall_key} at ({pos[0]}, {pos[1]})")
     
     robot.camera.image_stream_enabled = True
-    print("✓ Camera enabled")
+    print("Camera enabled")
     
     create_cozmo_walls(robot)
     
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
-    print("✓ Event handler registered")
+    print("Event handler registered")
     
-    print("✓ Waiting for initialisation...")
+    print("Waiting for initialisation")
     time.sleep(1)
     
     robot.set_head_angle(Angle(0)).wait_for_completed()
-    print("✓ Head angle set")
+    print("Head angle set")
     
     time.sleep(1)
     
@@ -423,10 +423,10 @@ def main(robot: cozmo.robot.Robot):
     print(f"  {wall1_key}: Fixed at ({c1[0]:.1f}, {c1[1]:.1f})")
     print(f"  {wall2_key}: Fixed at ({c2[0]:.1f}, {c2[1]:.1f})")
     
-    print(f"\nMeasuring {wall1_key} with robust filtering...")
+    print(f"\nMeasuring {wall1_key} with filtering")
     d1, b1 = filtered_measurements(robot, marker1, n=10)
     
-    print(f"\nMeasuring {wall2_key} with robust filtering...")
+    print(f"\nMeasuring {wall2_key} with filtering")
     d2, b2 = filtered_measurements(robot, marker2, n=10)
     
     print(f"\nFiltered Measurements:")
@@ -456,20 +456,9 @@ def main(robot: cozmo.robot.Robot):
     print(f"Heading error: {math.degrees(error_heading):.1f}°")
     
     if method != "direct":
-        print(f"   Current settings: {math.hypot(c2[0]-c1[0], c2[1]-c1[1]):.1f}mm")
-        print(f"   Measured distances suggest: ~{d1+d2:.1f}mm total reach")
-        
-        actual_separation = min(d1 + d2, abs(d1 - d2) * 1.5)
-        suggested_pos1 = (0, int(actual_separation))
-        suggested_pos2 = (int(actual_separation), int(actual_separation))
-        
-        print(f"\n2. Try adjusting WALL_POSITIONS to:")
-        print(f"   'wall1': {suggested_pos1}")
-        print(f"   'wall2': {suggested_pos2}")
-        print("\n3. OR move your physical markers to better match")
-        print("   the current WALL_POSITIONS settings")
+        print("\nDirect triangulation failed\n")
     else:
-        print("\n✓ Direct triangulation succeeded - wall positions are accurate!\n")
+        print("\nDirect triangulation succeeded\n")
 
 
 if __name__ == "__main__":
