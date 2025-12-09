@@ -6,7 +6,7 @@ import matplotlib.patches as patches
 from cozmo.util import degrees, Angle, Pose
 from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
 
-# Configuration
+#Configuration
 WALL_POSITIONS = {
     'wall1': (0, 122),
     'wall2': (122, 122)
@@ -23,12 +23,12 @@ POSITION_TOLERANCE = 50
 RANGE_MAP_KEY = 20
 RADIUS_CIRCLES = 300
 
-# Global tracking variables
+#Global tracking variables
 walls = []
 marked_walls_seen = []
 walls_angles = []
 wall_assignments = {}
-map = dict()  # Stores positions and their reachable neighbours
+map = dict()  #Stores positions and their reachable neighbours
 explored_positions = []
 current_position = (0, 0)
 current_heading = 0
@@ -177,14 +177,14 @@ def pick_right_position(c1, c2, posA, posB, bearing1, bearing2):
     xr, yr = posA
     angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
     angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
-    error1 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
+    Error1 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
 
     xr, yr = posB
     angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
     angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
-    error2 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
+    Error2 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
 
-    if error1 < error2:
+    if Error1 < Error2:
         return posA
     else:
         return posB
@@ -449,7 +449,7 @@ def is_path_blocked(start_x, start_y, end_x, end_y):
         dist = math.sqrt((wall_x - closest_x)**2 + (wall_y - closest_y)**2)
         
         #Track maximum safe distance even if path is blocked
-        if t > 0:  # Wall is ahead, not behind
+        if t > 0:  #Wall is ahead, not behind
             distance_along_path = t * math.sqrt(dx*dx + dy*dy)
             if dist < WALL_RADIUS:
                 blocked = True
@@ -508,7 +508,7 @@ def choose_next_position():
         return valid_positions[0]
     
     #Use fallback if we have one
-    if best_fallback and max_fallback_dist > 50:  # Minimum useful distance
+    if best_fallback and max_fallback_dist > 50:  #Minimum useful distance
         return best_fallback
     
     #If all nearby positions explored, search globally
@@ -670,12 +670,12 @@ def main(robot: cozmo.robot.Robot):
     scan_for_walls(robot, num_needed=2)
     
     if len(marked_walls_seen) < 2:
-        print("ERROR: Need at least 2 walls for localization")
+        print("Error: Need at least 2 walls for localization")
         return
     
     #Initial localization
     if not localize_robot(robot):
-        print("ERROR: Could not localize robot")
+        print("Error: Could not localize robot")
         return
     
     #Main exploration loop
