@@ -2,6 +2,8 @@ import cozmo
 import math
 import time
 from statistics import mean
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 from cozmo.util import degrees, Angle
 from cozmo.objects import CustomObject, CustomObjectMarkers, CustomObjectTypes
@@ -20,6 +22,13 @@ walls = []
 marked_walls_seen = []
 walls_angles = []
 wall_assignments = {}
+
+# Track stuff for plotting
+scan_positions = []
+wall_detections = []
+final_position = None
+final_heading = None
+internal_position = None
 
 
 def create_cozmo_walls(robot: cozmo.robot.Robot):
@@ -77,7 +86,7 @@ def add_wall(wall_x, wall_y):
 
 
 def handle_object_observed(evt, **kw):
-    global walls, marked_walls_seen, walls_angles, wall_assignments
+    global walls, marked_walls_seen, walls_angles, wall_assignments, wall_detections
     
     if isinstance(evt.obj, CustomObject):
         if evt.obj not in marked_walls_seen:
@@ -93,6 +102,7 @@ def handle_object_observed(evt, **kw):
                 
                 print(f"Found wall: {marker_type} at {fixed_position}")
                 add_wall(fixed_position[0], fixed_position[1])
+                wall_detections.append(fixed_position)
             else:
                 #Assigns it to the next available wall
                 if len(marked_walls_seen) < len(WALL_POSITIONS):
@@ -103,6 +113,7 @@ def handle_object_observed(evt, **kw):
                     marked_walls_seen.append(evt.obj)
                     wall_assignments[evt.obj] = (wall_key, fixed_position)
                     add_wall(fixed_position[0], fixed_position[1])
+                    wall_detections.append(fixed_position)
 
 
 def fix_angle(angle):
@@ -171,7 +182,7 @@ def figure_out_position(c1, c2, d1, d2, b1, b2):
     x2, y2 = c2
     wall_dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
     
-    print(f"\nTrying to find position...")
+    print(f"\nTrying to find position")
     print(f"  Walls are {wall_dist:.0f}mm apart")
     print(f"  Measured {d1:.0f}mm and {d2:.0f}mm from robot")
     
@@ -184,7 +195,7 @@ def figure_out_position(c1, c2, d1, d2, b1, b2):
         print(f"  Got position directly")
         return xr, yr, heading
     
-    print(f"  Direct calculation didn't work, adjusting...")
+    print(f"  Direct calculation didn't work, adjusting")
     
     #If distances are too small, it makes them bigger
     if d1 + d2 < wall_dist:
@@ -275,7 +286,7 @@ def measure_wall(robot, marker_obj, num_samples=10):
     distances = []
     bearings = []
     
-    print(f"    Taking {num_samples} measurements...", end='', flush=True)
+    print(f"    Taking {num_samples} measurements", end='', flush=True)
     
     for i in range(num_samples):
         d, b = get_marker_measurements(robot, marker_obj)
@@ -283,7 +294,7 @@ def measure_wall(robot, marker_obj, num_samples=10):
         bearings.append(b)
         time.sleep(0.05)
     
-    print(" done")
+    print("\nDone")
     
     #Cleans up distance outliers
     distances = clean_up_data(distances)
@@ -312,17 +323,24 @@ def measure_wall(robot, marker_obj, num_samples=10):
 
 
 def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
-    global marked_walls_seen, walls, walls_angles, wall_assignments
+    global marked_walls_seen, walls, walls_angles, wall_assignments, scan_positions
     
     marked_walls_seen.clear()
     walls.clear()
     walls_angles.clear()
     wall_assignments.clear()
     
-    print("\nScanning for walls...")
+    print("\nScanning for walls")
     
     #Does a 360 scan
     for step in range(18):
+        #Records where robot is during scan
+        scan_positions.append((
+            robot.pose.position.x,
+            robot.pose.position.y,
+            robot.pose.rotation.angle_z.radians
+        ))
+        
         if len(marked_walls_seen) >= num_needed:
             print(f"Found {len(marked_walls_seen)} walls, stopping scan")
             break
@@ -338,7 +356,79 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
     return len(marked_walls_seen) >= num_needed
 
 
+def plot_everything(c1, c2, d1, d2):
+    global scan_positions, wall_detections, final_position, final_heading, internal_position
+    
+    print("\nMaking plot")
+    
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    #Draws the walls
+    for i, wall_pos in enumerate(WALL_POSITIONS.values()):
+        wall_rect = patches.Rectangle((wall_pos[0]-10, wall_pos[1]-5), 20, 10, 
+                                      linewidth=2, edgecolor='black', facecolor='gray')
+        ax.add_patch(wall_rect)
+        ax.text(wall_pos[0], wall_pos[1], f'Wall{i+1}', ha='center', va='center', fontsize=8)
+    
+    #Shows scan path
+    if len(scan_positions) > 0:
+        scan_x = [p[0] for p in scan_positions]
+        scan_y = [p[1] for p in scan_positions]
+        ax.plot(scan_x, scan_y, 'o-', color='lightblue', markersize=3, 
+                linewidth=1, label='Scan path', alpha=0.6)
+    
+    #Shows when walls were found
+    for wall_pos in wall_detections:
+        ax.plot(wall_pos[0], wall_pos[1], 'r*', markersize=15, label='Wall detected')
+    
+    #Draws distance circles from walls
+    if final_position:
+        circle1 = plt.Circle(c1, d1, fill=False, color='orange', linestyle='--', 
+                            linewidth=1.5, alpha=0.7)
+        circle2 = plt.Circle(c2, d2, fill=False, color='purple', linestyle='--', 
+                            linewidth=1.5, alpha=0.7)
+        ax.add_patch(circle1)
+        ax.add_patch(circle2)
+        
+        #Shows calculated position
+        ax.plot(final_position[0], final_position[1], 'go', markersize=12, 
+                label='Calculated position')
+        
+        #Shows heading
+        arrow_len = 30
+        dx = arrow_len * math.cos(final_heading)
+        dy = arrow_len * math.sin(final_heading)
+        ax.arrow(final_position[0], final_position[1], dx, dy, 
+                head_width=8, head_length=10, fc='green', ec='green', alpha=0.7)
+    
+    #Shows cozmo's internal estimate
+    if internal_position:
+        ax.plot(internal_position[0], internal_position[1], 'bs', markersize=10, 
+                label='Cozmo internal')
+    
+    ax.set_xlabel('X (mm)')
+    ax.set_ylabel('Y (mm)')
+    ax.set_title('Robot Localisation Process')
+    ax.grid(True, alpha=0.3)
+    ax.axis('equal')
+    
+    #Cleans up duplicate labels
+    handles, labels = ax.get_legend_handles_labels()
+    unique = {}
+    for h, l in zip(handles, labels):
+        if l not in unique:
+            unique[l] = h
+    ax.legend(unique.values(), unique.keys(), loc='upper right')
+    
+    plt.tight_layout()
+    plt.show()
+    
+    print("Plot shown")
+
+
 def main(robot: cozmo.robot.Robot):
+    global final_position, final_heading, internal_position
+    
     print("Robot Localisation Using Wall Markers")
     print(f"\nWall positions:")
     for wall_key, pos in WALL_POSITIONS.items():
@@ -359,7 +449,7 @@ def main(robot: cozmo.robot.Robot):
         print(f"ERROR: Only found {len(marked_walls_seen)} walls, need 2")
         return
     
-    print("Measuring walls...")
+    print("Measuring walls")
     
     marker1 = marked_walls_seen[0]
     marker2 = marked_walls_seen[1]
@@ -381,7 +471,7 @@ def main(robot: cozmo.robot.Robot):
     
     xr, yr, heading = figure_out_position(c1, c2, d1, d2, b1, b2)
     
-    print("\n=== Results ===")
+    print("\nResults:")
     print(f"Robot position: ({xr:.0f}, {yr:.0f})mm")
     print(f"Robot heading: {math.degrees(heading):.0f}°")
     
@@ -397,6 +487,14 @@ def main(robot: cozmo.robot.Robot):
     
     print(f"\nPosition error: {error_dist:.0f}mm")
     print(f"Heading error: {math.degrees(error_heading):.0f}°\n")
+    
+    #Saves stuff for plotting
+    final_position = (xr, yr)
+    final_heading = heading
+    internal_position = (robot.pose.position.x, robot.pose.position.y)
+    
+    #Makes the plot
+    plot_everything(c1, c2, d1, d2)
 
 
 if __name__ == "__main__":
