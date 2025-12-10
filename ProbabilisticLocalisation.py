@@ -24,14 +24,14 @@ marked_walls_seen = []
 walls_angles = []
 wall_assignments = {}
 
-# Track stuff for plotting
+#Track stuff for plotting
 scan_positions = []
 wall_detections = []
 final_position = None
 final_heading = None
 internal_position = None
 
-# Particle filter stuff
+#Particle filter values
 particles = None
 weights = None
 num_particles = 500
@@ -155,9 +155,9 @@ def move_particles(delta_x, delta_y, delta_theta):
     global particles
     
     #How much noise to add (bigger = more uncertain)
-    noise_x = 15  # mm
-    noise_y = 15  # mm
-    noise_theta = 0.15  # radians
+    noise_x = 15  #mm
+    noise_y = 15  #mm
+    noise_theta = 0.15  #radians
     
     for i in range(num_particles):
         #Add movement plus random noise
@@ -174,8 +174,8 @@ def update_particle_weights(measurements, wall_positions):
     global particles, weights
     
     #How much noise we expect in our sensors
-    sigma_dist = 25  # mm
-    sigma_bearing = 0.2  # radians
+    sigma_dist = 25  #mm
+    sigma_bearing = 0.2  #radians
     
     for i in range(num_particles):
         x, y, theta = particles[i]
