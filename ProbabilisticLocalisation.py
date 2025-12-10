@@ -1,6 +1,7 @@
 import cozmo
 import math
 import time
+import numpy as np
 from statistics import mean
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -29,6 +30,11 @@ wall_detections = []
 final_position = None
 final_heading = None
 internal_position = None
+
+# Particle filter stuff
+particles = None
+weights = None
+num_particles = 500
 
 
 def create_cozmo_walls(robot: cozmo.robot.Robot):
@@ -125,125 +131,132 @@ def fix_angle(angle):
     return angle
 
 
-def find_robot_position(c1, c2, d1, d2):
-    x1, y1 = c1
-    x2, y2 = c2
-
-    dx = x2 - x1
-    dy = y2 - y1
-    wall_distance = math.sqrt(dx*dx + dy*dy)
-
-    if wall_distance == 0:
-        return None, None
+def init_particles():
+    #Makes random particles spread out in the environment
+    global particles, weights, num_particles
     
-    #Checks if circles can intersect
-    if wall_distance > d1 + d2 or wall_distance < abs(d1 - d2):
-        return None, None
-
-    a = (d1*d1 - d2*d2 + wall_distance*wall_distance) / (2 * wall_distance)
-    h_squared = d1*d1 - a*a
-    if h_squared < 0:
-        return None, None
-    h = math.sqrt(h_squared)
-
-    x3 = x1 + a * dx / wall_distance
-    y3 = y1 + a * dy / wall_distance
-
-    #Two possible positions
-    rx1 = x3 + h * (dy / wall_distance)
-    ry1 = y3 - h * (dx / wall_distance)
-
-    rx2 = x3 - h * (dy / wall_distance)
-    ry2 = y3 + h * (dx / wall_distance)
-
-    return (rx1, ry1), (rx2, ry2)
+    print(f"Making {num_particles} particles")
+    
+    #Random positions in a reasonable range
+    particles = np.random.uniform(
+        low=[-100, -100, -np.pi],
+        high=[300, 300, np.pi],
+        size=(num_particles, 3)
+    )
+    
+    #All particles start with equal weight
+    weights = np.ones(num_particles) / num_particles
+    
+    print("Particles initialized")
 
 
-def pick_right_position(c1, c2, posA, posB, bearing1, bearing2):
-    #Checks which position matches the bearings better
-    xr, yr = posA
-    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
-    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
-    error1 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
+def move_particles(delta_x, delta_y, delta_theta):
+    #Moves all particles based on robot movement with some noise added
+    global particles
+    
+    #How much noise to add (bigger = more uncertain)
+    noise_x = 15  # mm
+    noise_y = 15  # mm
+    noise_theta = 0.15  # radians
+    
+    for i in range(num_particles):
+        #Add movement plus random noise
+        particles[i, 0] += delta_x + np.random.normal(0, noise_x)
+        particles[i, 1] += delta_y + np.random.normal(0, noise_y)
+        particles[i, 2] += delta_theta + np.random.normal(0, noise_theta)
+        
+        #Keep angle wrapped
+        particles[i, 2] = fix_angle(particles[i, 2])
 
-    xr, yr = posB
-    angle1 = math.atan2(c1[1] - yr, c1[0] - xr)
-    angle2 = math.atan2(c2[1] - yr, c2[0] - xr)
-    error2 = abs(fix_angle(angle1 - bearing1)) + abs(fix_angle(angle2 - bearing2))
 
-    if error1 < error2:
-        return posA
+def update_particle_weights(measurements, wall_positions):
+    #Updates how likely each particle is based on what we measured
+    global particles, weights
+    
+    #How much noise we expect in our sensors
+    sigma_dist = 25  # mm
+    sigma_bearing = 0.2  # radians
+    
+    for i in range(num_particles):
+        x, y, theta = particles[i]
+        likelihood = 1.0
+        
+        #Check how well this particle matches each wall measurement
+        for (measured_dist, measured_bearing), (wall_x, wall_y) in zip(measurements, wall_positions):
+            #What we'd expect to measure from this particle's position
+            dx = wall_x - x
+            dy = wall_y - y
+            expected_dist = np.sqrt(dx**2 + dy**2)
+            expected_bearing = fix_angle(np.arctan2(dy, dx) - theta)
+            
+            #How far off are we
+            dist_error = measured_dist - expected_dist
+            bearing_error = fix_angle(measured_bearing - expected_bearing)
+            
+            #Calculate probability using gaussian
+            likelihood *= np.exp(-0.5 * (dist_error / sigma_dist)**2)
+            likelihood *= np.exp(-0.5 * (bearing_error / sigma_bearing)**2)
+        
+        weights[i] = likelihood
+    
+    #Normalize so weights sum to 1
+    total_weight = np.sum(weights)
+    if total_weight > 0:
+        weights = weights / total_weight
     else:
-        return posB
+        #If all weights are zero, reset them
+        weights = np.ones(num_particles) / num_particles
 
 
-def figure_out_position(c1, c2, d1, d2, b1, b2):
-    x1, y1 = c1
-    x2, y2 = c2
-    wall_dist = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+def resample_particles():
+    #Keeps good particles and drops bad ones
+    global particles, weights
     
-    print(f"\nTrying to find position")
-    print(f"  Walls are {wall_dist:.0f}mm apart")
-    print(f"  Measured {d1:.0f}mm and {d2:.0f}mm from robot")
+    #Pick particles based on their weights
+    indices = np.random.choice(
+        num_particles,
+        size=num_particles,
+        p=weights
+    )
     
-    #Tries normal calculation first
-    result = find_robot_position(c1, c2, d1, d2)
-    if result[0] is not None:
-        posA, posB = result
-        xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
-        heading = (b1 + b2) / 2.0
-        print(f"  Got position directly")
-        return xr, yr, heading
+    particles = particles[indices]
     
-    print(f"  Direct calculation didn't work, adjusting")
-    
-    #If distances are too small, it makes them bigger
-    if d1 + d2 < wall_dist:
-        scale = (wall_dist * 1.1) / (d1 + d2)
-        d1 = d1 * scale
-        d2 = d2 * scale
-        print(f"  Scaled up distances by {scale:.2f}x")
-        
-        result = find_robot_position(c1, c2, d1, d2)
-        if result[0] is not None:
-            posA, posB = result
-            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
-            heading = (b1 + b2) / 2.0
-            return xr, yr, heading
-    
-    #If one distance is way bigger than the other, it fixes it
-    elif abs(d1 - d2) > wall_dist:
-        if d1 > d2:
-            d1 = wall_dist * 0.9 + d2
-        else:
-            d2 = wall_dist * 0.9 + d1
-        print(f"  Adjusted distance difference")
-        
-        result = find_robot_position(c1, c2, d1, d2)
-        if result[0] is not None:
-            posA, posB = result
-            xr, yr = pick_right_position(c1, c2, posA, posB, b1, b2)
-            heading = (b1 + b2) / 2.0
-            return xr, yr, heading
-    
-    #Estimates from bearings
-    print(f"  Using bearing estimate")
-    heading = (b1 + b2) / 2.0
-    
-    x1_est = c1[0] - d1 * math.cos(b1)
-    y1_est = c1[1] - d1 * math.sin(b1)
-    
-    x2_est = c2[0] - d2 * math.cos(b2)
-    y2_est = c2[1] - d2 * math.sin(b2)
-    
-    xr = (x1_est + x2_est) / 2
-    yr = (y1_est + y2_est) / 2
-    
-    return xr, yr, heading
+    #Reset weights to equal after resampling
+    weights = np.ones(num_particles) / num_particles
 
 
-def localise_robot(c1, c2, d1, d2, b1, b2):
-    return figure_out_position(c1, c2, d1, d2, b1, b2)
+def get_particle_estimate():
+    #Gets best position guess from all particles
+    global particles, weights
+    
+    #Weighted average of x and y
+    x = np.sum(weights * particles[:, 0])
+    y = np.sum(weights * particles[:, 1])
+    
+    #For heading, need circular mean
+    cos_sum = np.sum(weights * np.cos(particles[:, 2]))
+    sin_sum = np.sum(weights * np.sin(particles[:, 2]))
+    theta = np.arctan2(sin_sum, cos_sum)
+    
+    return x, y, theta
+
+
+def get_particle_uncertainty():
+    #Calculates how uncertain we are about position
+    global particles, weights
+    
+    mean_x, mean_y, mean_theta = get_particle_estimate()
+    
+    #Calculate variance in x and y
+    var_x = np.sum(weights * (particles[:, 0] - mean_x)**2)
+    var_y = np.sum(weights * (particles[:, 1] - mean_y)**2)
+    
+    #Calculate variance in heading (circular)
+    angle_diffs = np.array([fix_angle(particles[i, 2] - mean_theta) for i in range(num_particles)])
+    var_theta = np.sum(weights * angle_diffs**2)
+    
+    #Return standard deviations
+    return np.sqrt(var_x), np.sqrt(var_y), np.sqrt(var_theta)
 
 
 def get_marker_measurements(robot, marker_obj):
@@ -294,7 +307,7 @@ def measure_wall(robot, marker_obj, num_samples=10):
         bearings.append(b)
         time.sleep(0.05)
     
-    print("\nDone")
+    print(" - Done")
     
     #Cleans up distance outliers
     distances = clean_up_data(distances)
@@ -309,7 +322,7 @@ def measure_wall(robot, marker_obj, num_samples=10):
     threshold = max(sorted(diffs)[len(diffs)//2] * 2.5, math.radians(10))
     good_bearings = [b for b, diff in zip(bearings, diffs) if diff <= threshold]
     
-    #Gest median distance
+    #Gets median distance
     final_dist = sorted(distances)[len(distances) // 2]
     
     #Average of the good bearings
@@ -350,6 +363,9 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
         if step < 17:
             robot.turn_in_place(degrees(20)).wait_for_completed()
             time.sleep(0.3)
+            
+            #Update particles after each rotation
+            move_particles(0, 0, math.radians(20))
     
     print(f"Scan complete - found {len(marked_walls_seen)} walls\n")
     
@@ -358,10 +374,11 @@ def scan_for_walls(robot: cozmo.robot.Robot, num_needed=2):
 
 def plot_everything(c1, c2, d1, d2):
     global scan_positions, wall_detections, final_position, final_heading, internal_position
+    global particles, weights
     
     print("\nMaking plot")
     
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
     
     #Draws the walls
     for i, wall_pos in enumerate(WALL_POSITIONS.values()):
@@ -369,6 +386,29 @@ def plot_everything(c1, c2, d1, d2):
                                       linewidth=2, edgecolor='black', facecolor='gray')
         ax.add_patch(wall_rect)
         ax.text(wall_pos[0], wall_pos[1], f'Wall{i+1}', ha='center', va='center', fontsize=8)
+    
+    #Shows particles (colored by weight)
+    if particles is not None:
+        #Only show top particles to keep plot clean
+        top_indices = np.argsort(weights)[-100:]
+        top_particles = particles[top_indices]
+        top_weights = weights[top_indices]
+        
+        #Normalize weights for coloring
+        norm_weights = (top_weights - top_weights.min()) / (top_weights.max() - top_weights.min() + 1e-10)
+        
+        scatter = ax.scatter(top_particles[:, 0], top_particles[:, 1], 
+                           c=norm_weights, cmap='YlOrRd', s=20, alpha=0.6, 
+                           label='Particles (top 100)')
+        
+        #Show particle headings for best ones
+        best_indices = np.argsort(weights)[-10:]
+        for idx in best_indices:
+            x, y, theta = particles[idx]
+            dx = 15 * np.cos(theta)
+            dy = 15 * np.sin(theta)
+            ax.arrow(x, y, dx, dy, head_width=5, head_length=7, 
+                    fc='red', ec='red', alpha=0.3, linewidth=0.5)
     
     #Shows scan path
     if len(scan_positions) > 0:
@@ -384,31 +424,34 @@ def plot_everything(c1, c2, d1, d2):
     #Draws distance circles from walls
     if final_position:
         circle1 = plt.Circle(c1, d1, fill=False, color='orange', linestyle='--', 
-                            linewidth=1.5, alpha=0.7)
+                            linewidth=1.5, alpha=0.7, label='Distance circles')
         circle2 = plt.Circle(c2, d2, fill=False, color='purple', linestyle='--', 
                             linewidth=1.5, alpha=0.7)
         ax.add_patch(circle1)
         ax.add_patch(circle2)
         
-        #Shows calculated position
-        ax.plot(final_position[0], final_position[1], 'go', markersize=12, 
-                label='Calculated position')
+        #Shows particle filter estimate
+        ax.plot(final_position[0], final_position[1], 'go', markersize=15, 
+                markeredgewidth=2, markeredgecolor='darkgreen',
+                label='Particle filter estimate')
         
         #Shows heading
-        arrow_len = 30
+        arrow_len = 40
         dx = arrow_len * math.cos(final_heading)
         dy = arrow_len * math.sin(final_heading)
         ax.arrow(final_position[0], final_position[1], dx, dy, 
-                head_width=8, head_length=10, fc='green', ec='green', alpha=0.7)
+                head_width=10, head_length=12, fc='green', ec='darkgreen', 
+                linewidth=2, alpha=0.8)
     
     #Shows cozmo's internal estimate
     if internal_position:
-        ax.plot(internal_position[0], internal_position[1], 'bs', markersize=10, 
+        ax.plot(internal_position[0], internal_position[1], 'bs', markersize=12, 
+                markeredgewidth=2, markeredgecolor='darkblue',
                 label='Cozmo internal')
     
     ax.set_xlabel('X (mm)')
     ax.set_ylabel('Y (mm)')
-    ax.set_title('Robot Localisation Process')
+    ax.set_title('Particle Filter Localisation')
     ax.grid(True, alpha=0.3)
     ax.axis('equal')
     
@@ -429,7 +472,7 @@ def plot_everything(c1, c2, d1, d2):
 def main(robot: cozmo.robot.Robot):
     global final_position, final_heading, internal_position
     
-    print("Robot Localisation Using Wall Markers")
+    print("Particle Filter Localisation Using Wall Markers")
     print(f"\nWall positions:")
     for wall_key, pos in WALL_POSITIONS.items():
         print(f"  {wall_key}: {pos}")
@@ -437,6 +480,9 @@ def main(robot: cozmo.robot.Robot):
     robot.camera.image_stream_enabled = True
     create_cozmo_walls(robot)
     robot.add_event_handler(cozmo.objects.EvtObjectObserved, handle_object_observed)
+    
+    #Initialize particle filter
+    init_particles()
     
     time.sleep(1)
     robot.set_head_angle(Angle(0)).wait_for_completed()
@@ -469,11 +515,29 @@ def main(robot: cozmo.robot.Robot):
     print(f"\nMeasuring {wall2_key}:")
     d2, b2 = measure_wall(robot, marker2)
     
-    xr, yr, heading = figure_out_position(c1, c2, d1, d2, b1, b2)
+    print("\nUpdating particle filter with measurements")
     
-    print("\nResults:")
+    #Put measurements and wall positions together
+    measurements = [(d1, b1), (d2, b2)]
+    wall_positions = [c1, c2]
+    
+    #Update particle weights based on how well they match measurements
+    update_particle_weights(measurements, wall_positions)
+    
+    #Get rid of bad particles and keep good ones
+    resample_particles()
+    
+    #Get best estimate from particles
+    xr, yr, heading = get_particle_estimate()
+    
+    #Calculate how uncertain we are
+    std_x, std_y, std_theta = get_particle_uncertainty()
+    
+    print("\nParticle Filter Results:")
     print(f"Robot position: ({xr:.0f}, {yr:.0f})mm")
     print(f"Robot heading: {math.degrees(heading):.0f}°")
+    print(f"Position uncertainty: ±{std_x:.0f}mm (x), ±{std_y:.0f}mm (y)")
+    print(f"Heading uncertainty: ±{math.degrees(std_theta):.1f}°")
     
     print("\nCozmo's internal estimate:")
     print(f"Position: ({robot.pose.position.x:.0f}, {robot.pose.position.y:.0f})mm")
